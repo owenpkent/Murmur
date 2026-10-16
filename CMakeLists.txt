@@ -55,6 +55,7 @@ target_link_libraries(Murmur
         okstudio_kit
         juce::juce_audio_utils
         juce::juce_dsp
+        juce::juce_data_structures
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
@@ -66,5 +67,5 @@ target_link_libraries(Murmur
 enable_testing()
 add_executable(Murmur_tests tests/DspTests.cpp tests/StateTests.cpp)
 target_include_directories(Murmur_tests PRIVATE src)
-target_link_libraries(Murmur_tests PRIVATE okstudio_kit juce::juce_dsp Murmur)
+target_link_libraries(Murmur_tests PRIVATE okstudio_kit juce::juce_dsp juce::juce_data_structures Murmur)
 add_test(NAME Murmur_tests COMMAND Murmur_tests)
