@@ -7,17 +7,21 @@ Why Murmur is built the way it is, and what was rejected.
 - **In-house MPM pitch tracker (Melody).** McLeod Pitch Method is monophonic, robust on
   voice, cheap, and short enough to write and test ourselves. A hand-rolled tracker keeps
   latency under our control and adds no dependency or licence to the plugin.
-- **Spectral-flux onsets.** Positive spectral flux with an adaptive threshold finds note
-  starts and drum transients in a single pass, and one knob (Sensitivity) maps cleanly to the
+- **Spectral-flux onsets (SuperFlux-style).** Log-compressed positive spectral flux, each bin
+  compared to the max of its neighbours in the previous frame so vibrato is not an onset, with
+  an adaptive median threshold finds note starts and drum transients in a single pass, and one knob (Sensitivity) maps cleanly to the
   threshold.
 - **Per-user kNN drum calibration.** Beatboxers sound different, so a fixed classifier fails.
   Three examples per class (kick, snare, closed hat, open hat) of a small spectral feature
-  vector, classified by nearest neighbour, trains in seconds, needs no model file, and
+  vector, classified by k = 3 nearest neighbours, trains in seconds, needs no model file, and
   serializes as a ValueTree into the session.
 - **Strength quantize plus IOI grid inference.** Quantize pulls each event toward the grid by
   a strength (0 keeps the human timing, 1 snaps), with swing on offbeats. When the host is
   stopped there is no tempo, so the engine estimates one from inter-onset intervals and
   uses it as the grid.
+- **Murmur Host is a second target, not a mode.** One hosted instrument VST3 inside the same
+  audio effect gives voice in, sound out on one track; see
+  [MURMUR_HOST_DESIGN.md](MURMUR_HOST_DESIGN.md).
 - **Audio effect, not instrument.** The plugin needs audio in. Live's "MIDI From" plug-in
   routing sends its MIDI to a Drum Rack track.
 

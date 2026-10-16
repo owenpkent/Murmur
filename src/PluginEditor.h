@@ -16,7 +16,8 @@ namespace murmur
 class MurmurEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
-    explicit MurmurEditor(MurmurProcessor&);
+    // checkForUpdates is false when embedded in Murmur Host, which is its own product.
+    explicit MurmurEditor(MurmurProcessor&, bool checkForUpdates = true);
     ~MurmurEditor() override;
 
     void paint(juce::Graphics&) override;
@@ -69,6 +70,8 @@ private:
     okstudio::updater::UpdateInfo pendingUpdate;
 
     bool drumsShown = false;
+public:
+    static constexpr int defaultWidth = 780, defaultHeight = 560;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MurmurEditor)
 };

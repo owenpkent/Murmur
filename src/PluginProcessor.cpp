@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "mcp/MurmurMcp.h"
 #include <okstudio/Scales.h>
 #include <okstudio/StateHelpers.h>
 #include <algorithm>
@@ -11,7 +12,7 @@ namespace
     juce::StringArray gridChoices() { return { "1/4", "1/8", "1/16", "1/8T", "1/16T", "1/32" }; }
 } // namespace
 
-juce::AudioProcessorValueTreeState::ParameterLayout MurmurProcessor::createLayout()
+juce::AudioProcessorValueTreeState::ParameterLayout MurmurProcessor::createLayout(bool hostLayout)
 {
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout layout;
@@ -31,15 +32,29 @@ juce::AudioProcessorValueTreeState::ParameterLayout MurmurProcessor::createLayou
                                                        okstudio::scales::names(), 0));
     // Scale lock defaults ON: staying in key is the point of humming a melody.
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { "scaleLock", 1 }, "Scale Lock", true));
+    // Murmur Host only: 0 = the voice passes through, 1 = only the hosted instrument is heard.
+    if (hostLayout)
+        layout.add(std::make_unique<AudioParameterFloat>(ParameterID { "mix", 1 }, "Mix",
+                                                          NormalisableRange<float>(0.0f, 1.0f, 0.001f), 1.0f));
     return layout;
 }
 
-MurmurProcessor::MurmurProcessor()
+MurmurProcessor::MurmurProcessor() : MurmurProcessor(false) {}
+
+MurmurProcessor::MurmurProcessor(bool hostLayout)
     : AudioProcessor(BusesProperties()
                          .withInput("Input", juce::AudioChannelSet::stereo(), true)
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts(*this, nullptr, "PARAMS", createLayout())
+      apvts(*this, nullptr, "PARAMS", createLayout(hostLayout))
 {
+    mcpBridge = std::make_unique<MurmurMcp>(*this);
+}
+
+// The bridge holds a reference to this processor and its server thread calls back into it,
+// so it goes first, before the members it reads are destroyed.
+MurmurProcessor::~MurmurProcessor()
+{
+    mcpBridge.reset();
 }
 
 bool MurmurProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
@@ -62,7 +77,13 @@ void MurmurProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     samplePosition = 0;
     lastMode = -1;
     lastLatency = engine.getLatencySamples();
-    setLatencySamples(lastLatency);
+    setLatencySamples(lastLatency + extraLatency.load());
+}
+
+void MurmurProcessor::setExtraLatency(int samples)
+{
+    extraLatency.store(std::max(0, samples));
+    setLatencySamples(engine.getLatencySamples() + extraLatency.load());
 }
 
 void MurmurProcessor::pushParametersToEngine()
@@ -106,6 +127,7 @@ void MurmurProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         }
     }
     hostPlaying.store(playing);
+    hostBpm.store(bpm);
 
     pushParametersToEngine();
     engine.setTransport(ppq, bpm, playing);
@@ -142,28 +164,36 @@ void MurmurProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     if (latency != lastLatency)
     {
         lastLatency = latency;
-        setLatencySamples(latency);
+        setLatencySamples(latency + extraLatency.load());
     }
 }
 
-void MurmurProcessor::getStateInformation(juce::MemoryBlock& destData)
+juce::ValueTree MurmurProcessor::calibrationToTree() const
 {
     // The calibration is wrapped so the engine's own tree type name stays its business.
     juce::ValueTree calib { "MURMUR_CALIBRATION" };
     const auto engineTree = engine.calibrationToValueTree();
     if (engineTree.isValid())
         calib.appendChild(engineTree, nullptr);
-    okstudio::state::save(apvts, "MURMUR", destData, { calib });
+    return calib;
+}
+
+void MurmurProcessor::restoreCalibration(const juce::ValueTree& root)
+{
+    const auto calib = root.getChildWithName("MURMUR_CALIBRATION");
+    if (calib.isValid() && calib.getNumChildren() > 0)
+        engine.calibrationFromValueTree(calib.getChild(0));
+}
+
+void MurmurProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+    okstudio::state::save(apvts, "MURMUR", destData, { calibrationToTree() });
 }
 
 void MurmurProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
-    okstudio::state::load(apvts, data, sizeInBytes, [this](const juce::ValueTree& root)
-    {
-        const auto calib = root.getChildWithName("MURMUR_CALIBRATION");
-        if (calib.isValid() && calib.getNumChildren() > 0)
-            engine.calibrationFromValueTree(calib.getChild(0));
-    });
+    okstudio::state::load(apvts, data, sizeInBytes,
+                          [this](const juce::ValueTree& root) { restoreCalibration(root); });
 }
 
 juce::AudioProcessorEditor* MurmurProcessor::createEditor()
@@ -172,7 +202,11 @@ juce::AudioProcessorEditor* MurmurProcessor::createEditor()
 }
 } // namespace murmur
 
+// The Murmur Host target compiles these same sources with MURMUR_HOST=1 and provides its own
+// createPluginFilter (src/host/MurmurHostProcessor.cpp).
+#if ! (defined(MURMUR_HOST) && MURMUR_HOST)
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new murmur::MurmurProcessor();
 }
+#endif

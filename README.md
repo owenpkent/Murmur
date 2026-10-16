@@ -1,7 +1,8 @@
 # Murmur
 
 Hum a melody or beatbox a groove and get MIDI. Murmur is a VST3 audio effect in the
-OK Studio line: it listens to a vocal track, turns what you sing into notes or drum hits,
+OK Studio line, shipped as two plugins: **Murmur** (voice in, MIDI out) and **Murmur Host**
+(the same, plus a hosted instrument so it makes sound on one track). It listens to a vocal track, turns what you sing into notes or drum hits,
 and quantizes them so the result sits in time. It is built mouse-only: every control is a
 click, a drag, or a scroll. No keyboard, no right-click, no tiny targets.
 
@@ -15,14 +16,35 @@ click, a drag, or a scroll. No keyboard, no right-click, no tiny targets.
 - **Dynamic quantize.** Strength (how hard hits snap to the grid), swing, and a grid
   division (1/4 to 1/32, with triplets). When the host is stopped there is no grid to
   follow, so Murmur infers a free tempo from your timing and shows it ("Free tempo: 120 BPM").
-- **Audio passes through unchanged.** The plugin reports its latency to the host so the
+- **Murmur Host hosts the instrument for you.** Voice in, drums or synth out, on one track
+  ([docs/MURMUR_HOST_DESIGN.md](docs/MURMUR_HOST_DESIGN.md)).
+- **Audio passes through unchanged** (plain Murmur). The plugin reports its latency to the host so the
   MIDI lines up.
 
 ## Use it in Ableton Live
 
+**One track: Murmur Host.** Drop **Murmur Host** on the vocal audio track, press **Scan**, pick a
+drum sampler or synth, and sing: the track plays the instrument. It hosts one instrument VST3
+inside itself, so there is no second track. **Mix** blends the voice back in.
+
+**Two tracks: plain Murmur.**
 Put Murmur on the vocal audio track. On a MIDI track with a Drum Rack (or any synth), set
 **MIDI From** to that audio track and choose **Murmur** as the source. Needs Live 10.1+.
-Full steps, with the gotchas: [docs/ABLETON_LIVE.md](docs/ABLETON_LIVE.md).
+Full steps, with the gotchas: [docs/ABLETON_LIVE.md](docs/ABLETON_LIVE.md). Neither setup has
+been load-tested in Live yet.
+
+## Driving it with Claude
+
+Murmur embeds an MCP server, so Claude Code (or any local MCP client) can read what the
+voice analysis is hearing, set the mode, key and quantize, read the inferred tempo, and run or
+clear a drum calibration (build the `murmur-mcp` shim first). See [docs/MCP.md](docs/MCP.md).
+
+## Installing
+
+Grab `MurmurSetup-x.y.z.exe` from the Releases page of `okstudio1/murmur-releases` and run it:
+it installs Murmur.vst3 where DAWs look (`C:\Program Files\Common Files\VST3`). The installer
+does not ship Murmur Host yet; build it from source. There is no release yet (see
+[docs/RELEASE.md](docs/RELEASE.md)).
 
 ## Accessibility
 
@@ -37,12 +59,17 @@ Needs JUCE at `..\JUCE` and the kit at `..\okstudio-juce-kit` (sibling checkouts
 Visual Studio 2022 Build Tools and CMake.
 
 ```powershell
-.\build.ps1          # Release VST3 + Standalone, copies the VST3 to %USERPROFILE%\Ableton\vst3
+.\build.ps1          # Release Murmur + Murmur Host (VST3 + Standalone), copies both VST3s to %USERPROFILE%\Ableton\vst3
 .\build.ps1 -Test    # also build and run the unit tests
+py run.py            # build and launch Murmur Host standalone (sing into the mic, hear the instrument)
+py run.py --murmur   # plain Murmur standalone (MIDI only)
 ```
 
 Details: [docs/BUILD.md](docs/BUILD.md). How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-Why it is built this way: [docs/DESIGN.md](docs/DESIGN.md).
+Why it is built this way: [docs/DESIGN.md](docs/DESIGN.md), with the sources in
+[docs/REFERENCES.md](docs/REFERENCES.md) and the dated log in [docs/DECISIONS.md](docs/DECISIONS.md).
+Every control and its gesture: [docs/CONTROLS.md](docs/CONTROLS.md). Cutting a release:
+[docs/RELEASE.md](docs/RELEASE.md).
 
 ## Status
 
