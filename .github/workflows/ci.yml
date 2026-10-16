@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'assets/**'
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'assets/**'
+      - 'docs/**'
+
+# Least privilege: this workflow only reads source and uploads an artifact.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Windows only. Owen ships Windows; the macos-latest leg was dropped
+    # 2026-07-22 because macOS runners bill included Actions minutes at 10x
+    # (the "90% of included minutes" warning). Revive from git history or a
+    # self-hosted Mac runner if mac builds ever return.
+    name: windows-latest
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Checkout JUCE
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          repository: juce-framework/JUCE
+          ref: 8.0.8
+          path: juce-sdk
+          persist-credentials: false
+
+      # The kit is a private repo, so CI needs a token with read access to it.
+      # Add a repo secret KIT_REPO_TOKEN (a PAT that can read owenpkent/okstudio-juce-kit).
+      - name: Checkout okstudio-juce-kit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          repository: owenpkent/okstudio-juce-kit
+          token: ${{ secrets.KIT_REPO_TOKEN }}
+          path: okstudio-juce-kit
+          persist-credentials: false
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DMURMUR_JUCE_PATH="${{ github.workspace }}/juce-sdk"
+          -DOKSTUDIO_KIT_PATH="${{ github.workspace }}/okstudio-juce-kit"
+          -DMURMUR_COPY_PLUGIN=OFF
+
+      - name: Build VST3
+        run: cmake --build build --config Release --target Murmur_VST3
+
+      - name: Build tests
+        run: cmake --build build --config Release --target Murmur_tests
+
+      - name: Run tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Upload VST3 artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: Murmur-VST3-win64
+          path: build/Murmur_artefacts/Release/VST3/Murmur.vst3

@@ -1,0 +1,55 @@
+# Murmur
+
+Hum a melody or beatbox a groove and get MIDI. Murmur is a VST3 audio effect in the
+OK Studio line: it listens to a vocal track, turns what you sing into notes or drum hits,
+and quantizes them so the result sits in time. It is built mouse-only: every control is a
+click, a drag, or a scroll. No keyboard, no right-click, no tiny targets.
+
+## What it does
+
+- **Melody mode.** Sing or hum, get scale-locked MIDI notes. Pick a root and a scale and
+  Murmur never emits a wrong note.
+- **Drums mode.** Beatbox kick, snare, closed hat and open hat. Murmur learns your voice:
+  press Calibrate, make the sound three times, done. Output is General MIDI Drum Rack notes
+  (kick 36, snare 38, closed hat 42, open hat 46).
+- **Dynamic quantize.** Strength (how hard hits snap to the grid), swing, and a grid
+  division (1/4 to 1/32, with triplets). When the host is stopped there is no grid to
+  follow, so Murmur infers a free tempo from your timing and shows it ("Free tempo: 120 BPM").
+- **Audio passes through unchanged.** The plugin reports its latency to the host so the
+  MIDI lines up.
+
+## Use it in Ableton Live
+
+Put Murmur on the vocal audio track. On a MIDI track with a Drum Rack (or any synth), set
+**MIDI From** to that audio track and choose **Murmur** as the source. Needs Live 10.1+.
+Full steps, with the gotchas: [docs/ABLETON_LIVE.md](docs/ABLETON_LIVE.md).
+
+## Accessibility
+
+This is the product, not a feature. Every interaction works with a single left-click, a
+drag, or a scroll. Nothing requires the keyboard, a double-click, a modifier key, or a
+precise gesture. Hit targets are at least 34 px. The plugin never takes keyboard focus from
+your DAW. The contract is shared across the line via the kit's `MouseOnly.h`.
+
+## Build
+
+Needs JUCE at `..\JUCE` and the kit at `..\okstudio-juce-kit` (sibling checkouts), plus
+Visual Studio 2022 Build Tools and CMake.
+
+```powershell
+.\build.ps1          # Release VST3 + Standalone, copies the VST3 to %USERPROFILE%\Ableton\vst3
+.\build.ps1 -Test    # also build and run the unit tests
+```
+
+Details: [docs/BUILD.md](docs/BUILD.md). How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Why it is built this way: [docs/DESIGN.md](docs/DESIGN.md).
+
+## Status
+
+Pre-0.1. Parameter layout may still change and break saved sessions (noted in the
+[changelog](CHANGELOG.md)).
+
+## License
+
+GPL-3.0, see [LICENSE](LICENSE). Compiled binaries link JUCE, so distributing them must also
+satisfy JUCE's terms (AGPLv3, a purchased license, or JUCE's free tier conditions).
