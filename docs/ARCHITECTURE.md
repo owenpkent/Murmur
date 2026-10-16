@@ -41,6 +41,17 @@ and whenever it changes. Hosts that compensate (Live does) line the MIDI up with
 engine's calibration tree, so a calibrated voice comes back with the session. Loading an
 absent or invalid calibration leaves the engine defaults.
 
+## MCP bridge
+
+`MurmurProcessor` owns one `MurmurMcp` (`src/mcp/`), created in the constructor and reset
+first in the destructor. It registers seven tools on the kit's `okstudio::mcp::Server`, which
+binds a loopback port and writes a discovery file the `murmur-mcp` stdio shim finds. Tool
+bodies run on the message thread, so they call into the processor and APVTS exactly as the
+editor does; the live values they read are the same atomics the editor timer reads. The
+processor additionally records the host tempo (`getHostBpm()`) each block for `get_transport`.
+There is no timer and no scheduling: Murmur plays nothing on request. Tools and setup:
+[MCP.md](MCP.md).
+
 ## Editor
 
 Mode toggle, knobs, grid control, level bar, last note/hit and free-tempo readout. The 30 Hz

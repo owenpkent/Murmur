@@ -2,12 +2,17 @@
 build/
 out/
 cmake-build-*/
+release/
+dist/
 
 # IDE / editor
 .vs/
-.vscode/
 .idea/
 *.user
+
+# Python bytecode. run.py is a module as well as a script, so importing it leaves a cache.
+__pycache__/
+*.pyc
 
 # OS
 .DS_Store
@@ -18,3 +23,4 @@ Thumbs.db
 *.pfx
 *.p12
 
+.mcp.json

@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "mcp/MurmurMcp.h"
 #include <okstudio/Scales.h>
 #include <okstudio/StateHelpers.h>
 #include <algorithm>
@@ -40,6 +41,14 @@ MurmurProcessor::MurmurProcessor()
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, nullptr, "PARAMS", createLayout())
 {
+    mcpBridge = std::make_unique<MurmurMcp>(*this);
+}
+
+// The bridge holds a reference to this processor and its server thread calls back into it,
+// so it goes first, before the members it reads are destroyed.
+MurmurProcessor::~MurmurProcessor()
+{
+    mcpBridge.reset();
 }
 
 bool MurmurProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
@@ -106,6 +115,7 @@ void MurmurProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         }
     }
     hostPlaying.store(playing);
+    hostBpm.store(bpm);
 
     pushParametersToEngine();
     engine.setTransport(ppq, bpm, playing);

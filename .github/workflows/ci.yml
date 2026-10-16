@@ -1,5 +1,7 @@
 name: CI
 
+# Docs/screenshot-only pushes don't need a build; every skipped run saves
+# 2x-billed Windows minutes.
 on:
   push:
     branches: [main]
@@ -17,34 +19,42 @@ on:
 permissions:
   contents: read
 
+# Cancel an in-flight build when a newer commit lands on the same branch/PR,
+# so rapid pushes don't stack 2x-billed Windows runs to completion.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     # Windows only. Owen ships Windows; the macos-latest leg was dropped
     # 2026-07-22 because macOS runners bill included Actions minutes at 10x
-    # (the "90% of included minutes" warning). Revive from git history or a
-    # self-hosted Mac runner if mac builds ever return.
+    # (the "90% of included minutes" warning). If mac builds ever return,
+    # revive the matrix from git history or a self-hosted Mac runner (see
+    # homelab-network/CHECKLIST.md).
     name: windows-latest
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Checkout JUCE
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: juce-framework/JUCE
           ref: 8.0.8
           path: juce-sdk
           persist-credentials: false
 
-      # The kit is a private repo, so CI needs a token with read access to it.
-      # Add a repo secret KIT_REPO_TOKEN (a PAT that can read owenpkent/okstudio-juce-kit).
+      # The kit is a private repo. Access is a read-only deploy key on the kit
+      # ("Murmur CI (read-only)"), stored here as the KIT_DEPLOY_KEY secret. No PAT
+      # and no user identity involved; revoke by deleting the deploy key.
       - name: Checkout okstudio-juce-kit
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: owenpkent/okstudio-juce-kit
-          token: ${{ secrets.KIT_REPO_TOKEN }}
+          ssh-key: ${{ secrets.KIT_DEPLOY_KEY }}
           path: okstudio-juce-kit
           persist-credentials: false
 
@@ -58,6 +68,11 @@ jobs:
 
       - name: Build VST3
         run: cmake --build build --config Release --target Murmur_VST3
+
+      # The murmur-mcp stdio shim (okstudio_add_mcp_shim(murmur-mcp) -> target murmur-mcp) is
+      # MURMUR_BUILD_MCP_SHIM, default ON in CMakeLists.txt. Build it so a broken shim fails CI.
+      - name: Build the MCP shim
+        run: cmake --build build --config Release --target murmur-mcp
 
       - name: Build tests
         run: cmake --build build --config Release --target Murmur_tests

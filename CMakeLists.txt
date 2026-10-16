@@ -37,7 +37,8 @@ okstudio_add_plugin(Murmur
 
 target_sources(Murmur PRIVATE
     src/PluginProcessor.cpp
-    src/PluginEditor.cpp)
+    src/PluginEditor.cpp
+    src/mcp/MurmurMcp.cpp)
 
 target_compile_definitions(Murmur PUBLIC
     JUCE_WEB_BROWSER=0
@@ -60,12 +61,22 @@ target_link_libraries(Murmur
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
 
+# The murmur-mcp stdio bridge: a small process Claude Code (or any local MCP client)
+# launches that discovers the live plugin instance's loopback server and speaks MCP stdio
+# to it. The default --product filter is baked in so a client launching it with no
+# arguments finds Murmur and not another plugin of the line (see docs/MCP.md).
+option(MURMUR_BUILD_MCP_SHIM "Build the murmur-mcp stdio bridge exe" ON)
+if (MURMUR_BUILD_MCP_SHIM)
+    okstudio_add_mcp_shim(murmur-mcp PRODUCT murmur)
+endif()
+
 # Unit tests (console, JUCE UnitTest). Build + run:
 #   cmake --build build --target Murmur_tests --config Release && ctest --test-dir build -C Release
-# DspTests.cpp owns main(); StateTests.cpp is self-registering statics only. StateTests
-# needs a real processor (APVTS + state), so the tests link the Murmur plugin target.
+# DspTests.cpp owns main(); StateTests.cpp and McpTests.cpp are self-registering statics only.
+# Both need a real processor (APVTS, state, the MCP bridge), so the tests link the Murmur
+# plugin target.
 enable_testing()
-add_executable(Murmur_tests tests/DspTests.cpp tests/StateTests.cpp)
+add_executable(Murmur_tests tests/DspTests.cpp tests/StateTests.cpp tests/McpTests.cpp)
 target_include_directories(Murmur_tests PRIVATE src)
 target_link_libraries(Murmur_tests PRIVATE okstudio_kit juce::juce_dsp juce::juce_data_structures Murmur)
 add_test(NAME Murmur_tests COMMAND Murmur_tests)

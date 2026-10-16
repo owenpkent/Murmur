@@ -13,13 +13,8 @@ AppPublisher=OK Studio
 AppPublisherURL=https://github.com/owenpkent/Murmur
 
 ; {app} is the VST3 *folder*; the bundle is installed into it as Murmur.vst3.
-;
-; Up to and including 0.2.0 this was the other way round - {app} was the bundle
-; itself (...\VST3\Murmur.vst3) with the directory page disabled, so nobody was
-; ever asked where the plug-in went. That is why UsePreviousAppDir must stay
-; off: Inno would otherwise remember a 0.2.0 install's {app} and, since the
-; [Files] entry now appends the bundle name itself, land the plug-in at
-; ...\VST3\Murmur.vst3\Murmur.vst3, which no host would ever find.
+; UsePreviousAppDir stays off so a remembered {app} can never nest the bundle inside
+; an older one (...\VST3\Murmur.vst3\Murmur.vst3), which no host would ever find.
 ;
 ; The default is the canonical location every VST3 host scans. It is a default
 ; rather than a fixed destination because a DAW can be pointed at a custom VST3
@@ -37,8 +32,13 @@ LicenseFile=..\LICENSE
 OutputDir=..\release
 OutputBaseFilename=MurmurSetup-{#Version}
 
+; Branding. All three are generated from assets/Murmur.svg by
+; installer/generate_brand.py and committed, so a build (and CI) never needs
 ; Pillow - rerun the script only when the mark itself changes.
+SetupIconFile=..\assets\Murmur.ico
 WizardStyle=modern
+WizardImageFile=wizard_large.bmp
+WizardSmallImageFile=wizard_small.bmp
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 ; If the DAW has Murmur loaded, Inno's restart-manager page asks the user to close it.

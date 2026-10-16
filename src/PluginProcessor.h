@@ -3,10 +3,13 @@
 #include "dsp/MurmurEngine.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <atomic>
+#include <memory>
 #include <vector>
 
 namespace murmur
 {
+class MurmurMcp; // src/mcp/MurmurMcp.h; only PluginProcessor.cpp needs the full type.
+
 // Murmur turns a sung, hummed or beatboxed voice into MIDI. It is a VST3 *audio effect*:
 // stereo or mono audio in, the audio passed through unchanged, MIDI out. In Live it sits
 // on the vocal audio track; a MIDI track picks it as "MIDI From" (docs/ABLETON_LIVE.md).
@@ -19,6 +22,7 @@ class MurmurProcessor : public juce::AudioProcessor
 {
 public:
     MurmurProcessor();
+    ~MurmurProcessor() override;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -46,7 +50,13 @@ public:
     // Editor access. The engine's getters are atomic; calibration calls are message-thread.
     dsp::MurmurEngine& getEngine() { return engine; }
     bool isHostPlaying() const { return hostPlaying.load(); }
+    double getHostBpm() const { return hostBpm.load(); } // 120 until the host reports a tempo
     bool isDrumsMode() const { return apvts.getRawParameterValue("mode")->load() > 0.5f; }
+
+    // The embedded MCP bridge (src/mcp/MurmurMcp.h) letting Claude Code or any local MCP
+    // client read and drive Murmur. Owned here, one per processor; tests reach it through
+    // this accessor rather than building a second one (which would bind a second port).
+    MurmurMcp* mcp() const { return mcpBridge.get(); }
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -61,6 +71,8 @@ private:
     int lastMode = -1;
     int lastLatency = -1;
     std::atomic<bool> hostPlaying { false };
+    std::atomic<double> hostBpm { 120.0 };
+    std::unique_ptr<MurmurMcp> mcpBridge;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MurmurProcessor)
 };

@@ -129,6 +129,18 @@ public:
         calibRemaining.store(calibrationHits);
     }
     bool isCalibrating() const { return calibRemaining.load() > 0; }
+    // The class being calibrated, or -1 when no calibration is running.
+    int getCalibratingClass() const
+    {
+        const juce::SpinLock::ScopedLockType l(classifierLock);
+        return calibRemaining.load() > 0 ? calibClass : -1;
+    }
+    // How many user examples a class holds (0 means it still classifies on the built-in defaults).
+    int getNumCalibrationExamples(DrumClass c) const
+    {
+        const juce::SpinLock::ScopedLockType l(classifierLock);
+        return classifier.getNumExamples((DrumClassifier::Class) c);
+    }
     void clearCalibration(DrumClass c)
     {
         const juce::SpinLock::ScopedLockType l(classifierLock);

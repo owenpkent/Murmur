@@ -24,6 +24,18 @@ Put Murmur on the vocal audio track. On a MIDI track with a Drum Rack (or any sy
 **MIDI From** to that audio track and choose **Murmur** as the source. Needs Live 10.1+.
 Full steps, with the gotchas: [docs/ABLETON_LIVE.md](docs/ABLETON_LIVE.md).
 
+## Driving it with Claude
+
+Murmur embeds an MCP server, so Claude Code (or any local MCP client) can read what the
+voice analysis is hearing, set the mode, key and quantize, read the inferred tempo, and run or
+clear a drum calibration. See [docs/MCP.md](docs/MCP.md).
+
+## Installing
+
+Grab `MurmurSetup-x.y.z.exe` from the Releases page of `okstudio1/murmur-releases` and run it:
+it installs the VST3 where DAWs look (`C:\Program Files\Common Files\VST3`). Or build from
+source. There is no release yet (see [docs/RELEASE.md](docs/RELEASE.md)).
+
 ## Accessibility
 
 This is the product, not a feature. Every interaction works with a single left-click, a
@@ -39,10 +51,14 @@ Visual Studio 2022 Build Tools and CMake.
 ```powershell
 .\build.ps1          # Release VST3 + Standalone, copies the VST3 to %USERPROFILE%\Ableton\vst3
 .\build.ps1 -Test    # also build and run the unit tests
+py run.py            # build and launch the Standalone (sing into the mic)
 ```
 
 Details: [docs/BUILD.md](docs/BUILD.md). How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-Why it is built this way: [docs/DESIGN.md](docs/DESIGN.md).
+Why it is built this way: [docs/DESIGN.md](docs/DESIGN.md), with the sources in
+[docs/REFERENCES.md](docs/REFERENCES.md) and the dated log in [docs/DECISIONS.md](docs/DECISIONS.md).
+Every control and its gesture: [docs/CONTROLS.md](docs/CONTROLS.md). Cutting a release:
+[docs/RELEASE.md](docs/RELEASE.md).
 
 ## Status
 
