@@ -20,7 +20,7 @@ open).
 | **Input** level bar | none | Display only | Live input level, fast attack and slow release. |
 | **Last note / Last hit** readout | none | Display only | The last note (Melody) or drum hit (Drums) Murmur emitted, or "none". |
 | **Free tempo** readout | none | Display only | Shown only while the host transport is stopped: the tempo Murmur infers from the spacing of your onsets ("Free tempo: 120 BPM", or "listening" until it has one). Blank while the host plays, because the grid then follows the host. |
-| **Update to vX.Y.Z** button | none | Click | Appears only when a newer signed release exists on `okstudio1/murmur-releases`. Downloads, verifies and runs the installer. |
+| **Update to vX.Y.Z** button | none | Click | Plain Murmur only (Murmur Host has no updater). Appears only when a newer signed release exists on `okstudio1/murmur-releases`. Downloads, verifies and runs the installer. |
 
 ## Melody mode only
 
@@ -57,5 +57,5 @@ Murmur Host has every control above, plus a strip under them. Same gestures, sam
 | **Hide GUI / Show GUI** button | none | Click | Shows or hides the instrument's own editor below the strip. |
 | **Eject** button | none | Click | Unloads the instrument; the voice then passes through. |
 
-The status line under the list says what is playing, or "Instrument not found" if a saved
-instrument is missing.
+The status line under the list says what is playing, or "Instrument not found, passing audio
+through" if a saved instrument is missing.

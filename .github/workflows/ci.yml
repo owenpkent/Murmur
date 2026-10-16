@@ -48,7 +48,7 @@ jobs:
           persist-credentials: false
 
       # The kit is a private repo. Access is a read-only deploy key on the kit
-      # ("Murmur CI (read-only)"), stored here as the KIT_DEPLOY_KEY secret. No PAT
+      # ("murmur-ci (read-only)"), stored here as the KIT_DEPLOY_KEY secret. No PAT
       # and no user identity involved; revoke by deleting the deploy key.
       - name: Checkout okstudio-juce-kit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

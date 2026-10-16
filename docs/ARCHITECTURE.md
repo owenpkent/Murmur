@@ -30,10 +30,14 @@ there is no cross-thread parameter state to lock.
 
 ## Latency
 
-Pitch detection and onset confirmation need a short look-ahead window, and the quantizer may
-hold an event to land it on the grid. The engine reports the fixed part through
-`getLatencySamples()`; the processor forwards it with `setLatencySamples` in `prepareToPlay`
-and whenever it changes. Hosts that compensate (Live does) line the MIDI up with the audio.
+Drum classification needs 20 ms of audio after the onset, so the engine reports a fixed 20 ms
+(`getLatencySamples()`, `DrumFeatureExtractor::windowSeconds`) and releases every event, drum or
+melody, at event time + latency + quantize shift. Melody detection itself takes longer (pitch
+window, 40 ms stability test); a note-on is back-dated to the true start but can only be released
+once decided, so it comes out at offset 0 of the block that confirmed it when that is already
+past. The processor forwards the latency with `setLatencySamples` in `prepareToPlay` and
+whenever it changes; Murmur Host adds the hosted instrument's. Hosts that compensate (Live
+does) line the MIDI up with the audio.
 
 ## State
 

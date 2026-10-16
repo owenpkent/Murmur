@@ -1,7 +1,8 @@
 # Murmur
 
 Hum a melody or beatbox a groove and get MIDI. Murmur is a VST3 audio effect in the
-OK Studio line: it listens to a vocal track, turns what you sing into notes or drum hits,
+OK Studio line, shipped as two plugins: **Murmur** (voice in, MIDI out) and **Murmur Host**
+(the same, plus a hosted instrument so it makes sound on one track). It listens to a vocal track, turns what you sing into notes or drum hits,
 and quantizes them so the result sits in time. It is built mouse-only: every control is a
 click, a drag, or a scroll. No keyboard, no right-click, no tiny targets.
 
@@ -26,22 +27,24 @@ click, a drag, or a scroll. No keyboard, no right-click, no tiny targets.
 drum sampler or synth, and sing: the track plays the instrument. It hosts one instrument VST3
 inside itself, so there is no second track. **Mix** blends the voice back in.
 
-**Two tracks: plain Murmur.** 
+**Two tracks: plain Murmur.**
 Put Murmur on the vocal audio track. On a MIDI track with a Drum Rack (or any synth), set
 **MIDI From** to that audio track and choose **Murmur** as the source. Needs Live 10.1+.
-Full steps, with the gotchas: [docs/ABLETON_LIVE.md](docs/ABLETON_LIVE.md).
+Full steps, with the gotchas: [docs/ABLETON_LIVE.md](docs/ABLETON_LIVE.md). Neither setup has
+been load-tested in Live yet.
 
 ## Driving it with Claude
 
 Murmur embeds an MCP server, so Claude Code (or any local MCP client) can read what the
 voice analysis is hearing, set the mode, key and quantize, read the inferred tempo, and run or
-clear a drum calibration. See [docs/MCP.md](docs/MCP.md).
+clear a drum calibration (build the `murmur-mcp` shim first). See [docs/MCP.md](docs/MCP.md).
 
 ## Installing
 
 Grab `MurmurSetup-x.y.z.exe` from the Releases page of `okstudio1/murmur-releases` and run it:
-it installs Murmur.vst3 (the installer does not ship Murmur Host yet; build it from source) where DAWs look (`C:\Program Files\Common Files\VST3`). Or build from
-source. There is no release yet (see [docs/RELEASE.md](docs/RELEASE.md)).
+it installs Murmur.vst3 where DAWs look (`C:\Program Files\Common Files\VST3`). The installer
+does not ship Murmur Host yet; build it from source. There is no release yet (see
+[docs/RELEASE.md](docs/RELEASE.md)).
 
 ## Accessibility
 

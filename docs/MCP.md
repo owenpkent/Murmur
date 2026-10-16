@@ -7,6 +7,9 @@ tool calls instead of mouse clicks. This does not change Murmur's own accessibil
 (nothing in [CONTROLS.md](CONTROLS.md) requires it); it is an additional way in, for when you
 would rather describe what you want than click it.
 
+Murmur Host answers on the same server, so everything here applies to it too (`get_state` reports
+`product: "Murmur Host"` and a `mix` control; `mix` is also a `set_params` id there).
+
 Murmur makes no sound and plays nothing on request, so unlike Keys there are no play-a-note
 tools. What Claude can do is configure Murmur and watch what it hears.
 

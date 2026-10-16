@@ -14,7 +14,7 @@ Override paths with `-DMURMUR_JUCE_PATH=<dir>` and `-DOKSTUDIO_KIT_PATH=<dir>`.
 
 **Default dev loop: `run.py`.** Do not send Owen to Ableton to try a change. It closes the
 running Standalone (politely, so JUCE saves the chosen audio device), builds exactly one
-Standalone target, and relaunches it. The Standalone opens on the machine's audio input, so
+Standalone target (Murmur Host by default, `--murmur` for plain Murmur), and relaunches it. The Standalone opens on the machine's audio input, so
 singing into the mic shows the level bar, the last note or hit and the free tempo with no DAW
 involved and no rescan.
 
@@ -23,7 +23,8 @@ console holds open on failure so he can read the error. `run.ps1` is a thin shim
 there is one copy of the logic.
 
 ```powershell
-py run.py              # build + launch the Murmur Standalone
+py run.py              # build + launch the Murmur Host Standalone
+py run.py --murmur     # plain Murmur Standalone (MIDI only, silent)
 py run.py --no-build   # just relaunch what is already built
 py run.py --hold       # pause on failure (for a console that closes when this returns)
 ```
@@ -45,12 +46,13 @@ immediate.
 ## Quick build (build.ps1)
 
 ```powershell
-.\build.ps1                 # Release VST3 + Standalone, copy VST3 to %USERPROFILE%\Ableton\vst3
+.\build.ps1                 # Release Murmur + Murmur Host (VST3 + Standalone), copy both VST3s to %USERPROFILE%\Ableton\vst3
 .\build.ps1 -NoCopy         # build only
 .\build.ps1 -Config Debug
 .\build.ps1 -Test           # also build and run the tests
 .\build.ps1 -Installer      # also build and SIGN release\MurmurSetup-<version>.exe
 .\build.ps1 -Installer -NoSign   # unsigned, for checking layout and branding
+.\build.ps1 -Sign           # sign the built binaries without making an installer
 .\build.ps1 -PrintVersion   # print the version from CMakeLists.txt and exit
 ```
 
@@ -65,13 +67,14 @@ For a release, double-click `release.py` rather than running `-Installer` yourse
 
 ```powershell
 cmake -B build -S . -G "Visual Studio 17 2022" -A x64 -DMURMUR_COPY_PLUGIN=OFF
-cmake --build build --config Release --target Murmur_VST3 Murmur_Standalone
+cmake --build build --config Release --target Murmur_VST3 Murmur_Standalone MurmurHost_VST3 MurmurHost_Standalone
 cmake --build build --config Release --target murmur-mcp
 cmake --build build --config Release --target Murmur_tests
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Artefacts land in `build/Murmur_artefacts/Release/{VST3,Standalone}/`; the MCP shim is
+Artefacts land in `build/Murmur_artefacts/Release/{VST3,Standalone}/` (Murmur Host in
+`build/MurmurHost_artefacts/...`); the MCP shim is
 `build/Release/murmur-mcp.exe`. Passing `-DMURMUR_COPY_PLUGIN=OFF` builds but does **not**
 install to the DAW folder, so Ableton keeps loading the previously installed binary. If Owen
 reports "the VST didn't update", that is the usual cause: run `build.ps1`, then rescan in Live.
@@ -84,9 +87,11 @@ reports "the VST didn't update", that is the usual cause: run `build.ps1`, then 
   owns `main`.
 - `tests/StateTests.cpp`: processor state, bus configuration and the calibration round trip.
 - `tests/McpTests.cpp`: the MCP tools, driven through the server's JSON-RPC layer.
+- `tests/HostTests.cpp`: Murmur Host with no instrument loaded (Mix, passthrough, state, latency).
+  Left out when `MURMUR_BUILD_HOST` is OFF.
 
-The state and MCP tests need a real processor (APVTS, state, the bridge), so the runner links
-the Murmur plugin target. No `/STACK` raise is needed. The exit code is the failure count, so
+The state, MCP and Host tests need a real processor (APVTS, state, the bridge), so the runner
+links `MurmurHost` (a superset of Murmur), or `Murmur` when the Host is off. No `/STACK` raise is needed. The exit code is the failure count, so
 `ctest` is the whole interface.
 
 ## CMake options
@@ -95,21 +100,22 @@ the Murmur plugin target. No `/STACK` raise is needed. The exit code is the fail
 |--------|---------|--------|
 | `MURMUR_COPY_PLUGIN` | ON | Copy the VST3 to `MURMUR_VST3_COPY_DIR` after building. `build.ps1` and CI turn it off. |
 | `MURMUR_VST3_COPY_DIR` | `%USERPROFILE%/Ableton/vst3` | Where that copy goes. |
+| `MURMUR_BUILD_HOST` | ON | Build Murmur Host (`MurmurHost_VST3`, `MurmurHost_Standalone`) and its tests. |
 | `MURMUR_BUILD_MCP_SHIM` | ON | Build the `murmur-mcp` stdio bridge (see [MCP.md](MCP.md)). |
 | `MURMUR_JUCE_PATH` | `../JUCE` | JUCE checkout. |
 | `OKSTUDIO_KIT_PATH` | `../okstudio-juce-kit` | Kit checkout. |
 
 ## CI
 
-`.github/workflows/ci.yml` builds the VST3, the MCP shim and the tests on windows-latest, runs
-the tests, and uploads the unsigned VST3. The macOS leg was dropped across the line to save
+`.github/workflows/ci.yml` builds both VST3s, the MCP shim and the tests on windows-latest, runs
+the tests, and uploads the unsigned VST3s. The macOS leg was dropped across the line to save
 Actions minutes. The kit is private: CI checks it out with a read-only deploy key stored as
 the `KIT_DEPLOY_KEY` secret (no PAT). `security.yml` runs cppcheck. Dependabot bumps the
 pinned actions weekly, batched into one PR.
 
 ## Installer
 
-`installer/murmur.iss` (Inno Setup 6) installs `Murmur.vst3` into the VST3 folder. The output
+`installer/murmur.iss` (Inno Setup 6) installs `Murmur.vst3` into the VST3 folder (not Murmur Host). The output
 name must be exactly `MurmurSetup-{version}.exe` for the auto-updater. Signing happens in
 `build.ps1`; `installer/signing-thumbprint.txt` holds only the certificate thumbprint. The icon
 and wizard images are generated from `assets/Murmur.svg` by `py installer\generate_brand.py`

@@ -41,17 +41,19 @@ layout may still change and break saved sessions (noted loudly when it does).
   download counts).
 
 ### Changed
-- CI builds the MCP shim, cancels superseded runs, and checks out the private kit with a
+- CI builds Murmur Host and the MCP shim, cancels superseded runs, and checks out the private kit with a
   read-only deploy key (`KIT_DEPLOY_KEY`) instead of a token.
 - `.gitattributes` forces LF in the repository.
 
 ### Tests
-- Unit tests for processor state (`tests/StateTests.cpp`) and the MCP tools
-  (`tests/McpTests.cpp`).
+- `tests/DspTests.cpp` (engine), `tests/StateTests.cpp` (processor state and calibration round
+  trip), `tests/McpTests.cpp` (MCP tools) and `tests/HostTests.cpp` (Murmur Host without an
+  instrument), run by `ctest` as `Murmur_tests`.
 
 ### Docs
 - ARCHITECTURE, ABLETON_LIVE, BUILD, DESIGN, plus CONTROLS (every control and its gesture),
-  DECISIONS (dated log), REFERENCES (the research behind the engine), MCP and RELEASE.
+  DECISIONS (dated log), REFERENCES (the research behind the engine), MCP, RELEASE and
+  MURMUR_HOST_DESIGN.
 
 ### Kit
 - `okstudio_add_plugin` gained an `AUDIO_EFFECT` option.

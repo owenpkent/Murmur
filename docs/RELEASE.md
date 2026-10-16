@@ -9,8 +9,8 @@ token, so a release binary can only be produced on the dev machine with the eTok
 
 Releases live in the separate public repo **`okstudio1/murmur-releases`**, and the in-plugin
 updater is hard-pinned to it (`updaterConfig` in `src/PluginEditor.cpp`, which the kit's
-`okstudio::updater` reads). The source repo is private; the releases repo is public, which is
-what keeps auto-update working for anyone regardless of who can see the source.
+`okstudio::updater` reads). The releases repo is separate from the source repo so the pinned URL never has to follow a
+source rename or move.
 
 Four hard contracts. **Every one of them fails silently**, which is the whole reason this file
 exists rather than a shorter one:
@@ -104,9 +104,9 @@ py release.py --no-sign         # unsigned, to check layout and branding only
 ```
 
 `-Installer` implies signing (`-NoSign` overrides for an unsigned test build). The pipeline is
-a Release build of `Murmur_VST3` and `Murmur_Standalone`, sign the VST3 binary and the
-standalone, copy the VST3 to the Ableton scan folder, compile the Inno Setup installer, then
-sign and verify that. Output: `release\MurmurSetup-x.y.z.exe` (`release/` is gitignored).
+a Release build of Murmur and Murmur Host (VST3 and Standalone), sign the VST3 and Standalone
+binaries, copy the VST3s to the Ableton scan folder, compile the Inno Setup installer, then
+sign and verify that. The installer packages `Murmur.vst3` only. Output: `release\MurmurSetup-x.y.z.exe` (`release/` is gitignored).
 The token prompts for its PIN once, part way through.
 
 Branding (`assets/Murmur.ico`, `installer/wizard_large.bmp`, `installer/wizard_small.bmp`) is
@@ -184,7 +184,7 @@ GitHub does not distinguish them, so treat it as directional: downloads, not uni
 
 ## CI
 
-`.github/workflows/ci.yml` builds on `windows-latest` for every push and PR (the VST3, the
+`.github/workflows/ci.yml` builds on `windows-latest` for every push and PR (both VST3s, the
 `murmur-mcp` shim and the tests), runs the tests, and uploads the unsigned VST3 as an
 artifact. It cannot sign and it cannot publish; it is a smoke test. Docs and assets-only
 pushes skip it via `paths-ignore`. The private kit is checked out with a read-only deploy key

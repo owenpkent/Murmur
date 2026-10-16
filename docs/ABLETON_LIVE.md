@@ -3,13 +3,17 @@
 Murmur is an **audio effect** that outputs MIDI. Live 10.1 or later can route a plug-in's
 MIDI output to another track ("MIDI From" plug-ins).
 
+**Status: not yet load-tested in Live**, for either plugin. The routing below follows Live's
+documented "MIDI From" behaviour; plugin classification, the audio-in/MIDI-out bus layout and
+the routing itself are the things only a hands-on pass can prove.
+
 There are two ways to use it:
 
 - **Murmur Host, one track (recommended).** Murmur Host hosts one instrument VST3 (a drum
   sampler or synth) inside itself, so voice in, drums or synth out happens on a single audio
   track. See [One track: Murmur Host](#one-track-murmur-host).
 - **Murmur, two tracks.** Plain Murmur only emits MIDI, so a second MIDI track must take it as
-  "MIDI From". That is the Setup section below.
+  "MIDI From". That is the Setup section below. It is the only variant that needs "MIDI From".
 
 ## Setup (two tracks, plain Murmur)
 
@@ -71,4 +75,5 @@ The instrument and its settings are saved with the Live set. If the instrument i
 missing, the window says "Instrument not found" and the voice keeps passing through.
 Latency is Murmur's plus the instrument's, reported to Live for delay compensation.
 Not yet load-tested in Live (this needs a hands-on pass: plugin classification and that Live
-keeps feeding the track audio while the hosted instrument sounds).
+keeps feeding the track audio while the hosted instrument sounds). Hosting a third-party
+instrument has not been tried either; the unit tests cover only the no-instrument case.

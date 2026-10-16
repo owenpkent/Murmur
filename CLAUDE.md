@@ -96,7 +96,7 @@ src/dsp/                MurmurEngine, PitchTracker, OnsetDetector, NoteSegmenter
                         DrumFeatures, DrumClassifier, Quantizer (header-only)
 src/ui/                 Segmented (mode / grid toggles), LevelBar
 src/mcp/                MurmurMcp (the MCP tool table)
-src/host/                MurmurHostProcessor / MurmurHostEditor (Murmur Host target only)
+src/host/               MurmurHostProcessor / MurmurHostEditor (Murmur Host target only)
 tests/                  DspTests (owns main), StateTests, McpTests, HostTests
 installer/              murmur.iss, signing-thumbprint.txt, generate_brand.py, wizard images
 assets/                 Murmur.svg (master), Murmur.ico, logo-1024.png
