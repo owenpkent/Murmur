@@ -1,5 +1,5 @@
 <#
-  build.ps1 - configure + build Murmur (VST3 + Standalone), sign, copy the VST3 into
+  build.ps1 - configure + build Murmur and Murmur Host (VST3 + Standalone), sign, copy the VST3 into
   Owen's Ableton custom folder so a rebuild is picked up on the next Live scan, and
   optionally build the installer.
 
@@ -77,7 +77,7 @@ function Invoke-Sign {
 cmake -B build -S $root -G "Visual Studio 17 2022" -A x64 -DMURMUR_COPY_PLUGIN=OFF
 if ($LASTEXITCODE -ne 0) { throw "CMake configure failed" }
 
-cmake --build build --config $Config --target Murmur_VST3 Murmur_Standalone
+cmake --build build --config $Config --target Murmur_VST3 Murmur_Standalone MurmurHost_VST3 MurmurHost_Standalone
 if ($LASTEXITCODE -ne 0) { throw "Build failed" }
 
 if ($Test) {
@@ -87,26 +87,30 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw "Tests failed" }
 }
 
-$vst3 = Join-Path $root "build\Murmur_artefacts\$Config\VST3\Murmur.vst3"
-
 if ($doSign) {
     Invoke-Sign -Files @(
-        (Join-Path $vst3 "Contents\x86_64-win\Murmur.vst3"),
-        (Join-Path $root "build\Murmur_artefacts\$Config\Standalone\Murmur.exe"))
+        (Join-Path $root "build\Murmur_artefacts\$Config\VST3\Murmur.vst3\Contents\x86_64-win\Murmur.vst3"),
+        (Join-Path $root "build\Murmur_artefacts\$Config\Standalone\Murmur.exe"),
+        (Join-Path $root "build\MurmurHost_artefacts\$Config\VST3\Murmur Host.vst3\Contents\x86_64-win\Murmur Host.vst3"),
+        (Join-Path $root "build\MurmurHost_artefacts\$Config\Standalone\Murmur Host.exe"))
 }
 
 $copied = $true
 if (-not $NoCopy) {
     $dest = Join-Path $env:USERPROFILE "Ableton\vst3"
     if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
-    try {
-        # A VST3 is a bundle (folder) on Windows; copy the whole thing.
-        Copy-Item -Recurse -Force -Path $vst3 -Destination $dest -ErrorAction Stop
-        Write-Host "Installed Murmur.vst3 -> $dest" -ForegroundColor Green
-    } catch {
-        $copied = $false
-        Write-Host "WARNING: could not update $dest\Murmur.vst3" -ForegroundColor Yellow
-        Write-Host "  The DAW has it loaded (file locked). Unload it (or close the DAW), then rerun." -ForegroundColor Yellow
+    foreach ($bundle in @(@{ Art = "Murmur_artefacts"; Name = "Murmur.vst3" },
+                          @{ Art = "MurmurHost_artefacts"; Name = "Murmur Host.vst3" })) {
+        $src = Join-Path $root "build\$($bundle.Art)\$Config\VST3\$($bundle.Name)"
+        try {
+            # A VST3 is a bundle (folder) on Windows; copy the whole thing.
+            Copy-Item -Recurse -Force -Path $src -Destination $dest -ErrorAction Stop
+            Write-Host "Installed $($bundle.Name) -> $dest" -ForegroundColor Green
+        } catch {
+            $copied = $false
+            Write-Host "WARNING: could not update $dest\$($bundle.Name)" -ForegroundColor Yellow
+            Write-Host "  The DAW has it loaded (file locked). Unload it (or close the DAW), then rerun." -ForegroundColor Yellow
+        }
     }
 }
 
@@ -130,5 +134,5 @@ $state = if ($doSign) { "signed" } else { "unsigned" }
 if ($copied) {
     Write-Host "Done ($Config, $state). Artefacts under $root\build\Murmur_artefacts\$Config" -ForegroundColor Cyan
 } else {
-    Write-Host "Done ($Config, $state), but Murmur.vst3 was NOT installed - unload it in the DAW and rerun." -ForegroundColor Yellow
+    Write-Host "Done ($Config, $state), but at least one VST3 was NOT installed - unload it in the DAW and rerun." -ForegroundColor Yellow
 }

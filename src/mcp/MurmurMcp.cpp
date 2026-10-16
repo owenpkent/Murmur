@@ -118,13 +118,15 @@ okstudio::mcp::Tool MurmurMcp::toolGetState()
     {
         auto& engine = processor.getEngine();
         auto* o = new juce::DynamicObject();
-        o->setProperty("product", "Murmur");
+        o->setProperty("product", processor.productName());
         o->setProperty("version", JucePlugin_VersionString);
         o->setProperty("mode", paramText(processor, "mode"));
 
         auto* controls = new juce::DynamicObject();
         for (const char* id : { "sensitivity", "quantize", "swing", "grid", "root", "scale", "scaleLock" })
             controls->setProperty(id, paramText(processor, id));
+        if (processor.apvts.getParameter("mix") != nullptr) // Murmur Host only
+            controls->setProperty("mix", paramText(processor, "mix"));
         o->setProperty("controls", juce::var(controls));
 
         o->setProperty("inputLevel", (double) engine.getInputLevel());

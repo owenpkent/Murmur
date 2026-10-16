@@ -24,6 +24,9 @@ public:
     MurmurProcessor();
     ~MurmurProcessor() override;
 
+    // The product name shown in the MCP snapshot. Murmur Host overrides it.
+    virtual juce::String productName() const { return "Murmur"; }
+
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
@@ -60,8 +63,20 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
+protected:
+    // For Murmur Host: the same processor plus the host-only "mix" parameter.
+    explicit MurmurProcessor(bool hostLayout);
+
+    // Latency the subclass adds on top of the engine's (a hosted plugin's). Message thread
+    // or while processing is suspended; the host is told the sum.
+    void setExtraLatency(int samples);
+
+    // The shared pieces of state, so a subclass saves and restores exactly what Murmur does.
+    juce::ValueTree calibrationToTree() const;
+    void restoreCalibration(const juce::ValueTree& root);
+
 private:
-    static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    static juce::AudioProcessorValueTreeState::ParameterLayout createLayout(bool hostLayout);
     void pushParametersToEngine();
 
     dsp::MurmurEngine engine;
@@ -70,6 +85,7 @@ private:
     juce::int64 samplePosition = 0;
     int lastMode = -1;
     int lastLatency = -1;
+    std::atomic<int> extraLatency { 0 };
     std::atomic<bool> hostPlaying { false };
     std::atomic<double> hostBpm { 120.0 };
     std::unique_ptr<MurmurMcp> mcpBridge;

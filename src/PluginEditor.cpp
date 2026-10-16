@@ -22,7 +22,7 @@ namespace
     }
 } // namespace
 
-MurmurEditor::MurmurEditor(MurmurProcessor& p)
+MurmurEditor::MurmurEditor(MurmurProcessor& p, bool checkForUpdates)
     : juce::AudioProcessorEditor(p), processor(p),
       modeToggle(p.apvts, "mode", { "Melody", "Drums" }, 24.0f),
       gridToggle(p.apvts, "grid", { "1/4", "1/8", "1/16", "1/8T", "1/16T", "1/32" }, 14.0f)
@@ -84,16 +84,19 @@ MurmurEditor::MurmurEditor(MurmurProcessor& p)
     updaterConfig.releasesRepo = "okstudio1/murmur-releases";
     updaterConfig.currentVersion = juce::String(MURMUR_VERSION);
     updaterConfig.assetPrefix = "MurmurSetup-";
-    juce::Component::SafePointer<MurmurEditor> safe(this);
-    okstudio::updater::checkAsync(updaterConfig, [safe](okstudio::updater::UpdateInfo info)
+    if (checkForUpdates)
     {
-        if (auto* e = safe.getComponent())
-            e->showUpdate(info);
-    });
+        juce::Component::SafePointer<MurmurEditor> safe(this);
+        okstudio::updater::checkAsync(updaterConfig, [safe](okstudio::updater::UpdateInfo info)
+        {
+            if (auto* e = safe.getComponent())
+                e->showUpdate(info);
+        });
+    }
 
     setResizable(true, true);
     setResizeLimits(680, 500, 1800, 1200);
-    setSize(780, 560);
+    setSize(defaultWidth, defaultHeight);
 
     drumsShown = processor.isDrumsMode();
     applyModeVisibility();

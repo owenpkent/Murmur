@@ -26,6 +26,36 @@ if (MURMUR_COPY_PLUGIN AND WIN32)
     set(_murmurCopy COPY_DIR "${MURMUR_VST3_COPY_DIR}")
 endif()
 
+# Every Murmur plugin target shares one source list and one set of definitions, so Murmur and
+# Murmur Host cannot drift apart (Keys does the same with keys_configure_target).
+function(murmur_configure_target tgt)
+    target_sources(${tgt} PRIVATE
+        src/PluginProcessor.cpp
+        src/PluginEditor.cpp
+        src/mcp/MurmurMcp.cpp)
+
+    target_compile_definitions(${tgt} PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        MURMUR_VERSION="${PROJECT_VERSION}")
+
+    if (WIN32)
+        target_link_libraries(${tgt} PRIVATE wintrust crypt32)
+    endif()
+
+    target_link_libraries(${tgt}
+        PRIVATE
+            okstudio_kit
+            juce::juce_audio_utils
+            juce::juce_dsp
+            juce::juce_data_structures
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_warning_flags)
+endfunction()
+
 # Murmur takes AUDIO IN (a voice) and emits MIDI, so it is an audio effect, not an
 # instrument and not a MIDI effect. See the kit's okstudio_add_plugin AUDIO_EFFECT.
 okstudio_add_plugin(Murmur
@@ -34,32 +64,30 @@ okstudio_add_plugin(Murmur
     BUNDLE_SUFFIX murmur
     AUDIO_EFFECT
     ${_murmurCopy})
+murmur_configure_target(Murmur)
 
-target_sources(Murmur PRIVATE
-    src/PluginProcessor.cpp
-    src/PluginEditor.cpp
-    src/mcp/MurmurMcp.cpp)
-
-target_compile_definitions(Murmur PUBLIC
-    JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0
-    MURMUR_VERSION="${PROJECT_VERSION}")
-
-if (WIN32)
-    target_link_libraries(Murmur PRIVATE wintrust crypt32)
+# Murmur Host: Murmur plus one hosted instrument VST3 in the same plugin, so voice in and
+# drums or synth out work on ONE audio track (plain Murmur needs a second MIDI track taking
+# "MIDI From Murmur"). Still an AUDIO_EFFECT, because it needs the voice audio in.
+# Design: docs/MURMUR_HOST_DESIGN.md.
+option(MURMUR_BUILD_HOST "Build Murmur Host (hosts an instrument VST3 inside Murmur)" ON)
+if (MURMUR_BUILD_HOST)
+    okstudio_add_plugin(MurmurHost
+        PRODUCT_NAME  "Murmur Host"
+        PLUGIN_CODE   MrHo
+        BUNDLE_SUFFIX murmurhost
+        AUDIO_EFFECT
+        ${_murmurCopy})
+    murmur_configure_target(MurmurHost)
+    target_sources(MurmurHost PRIVATE
+        src/host/MurmurHostProcessor.cpp
+        src/host/MurmurHostEditor.cpp)
+    # MURMUR_HOST gates createPluginFilter (see PluginProcessor.cpp);
+    # JUCE_PLUGINHOST_VST3 turns on JUCE's bundled VST3 hosting.
+    target_compile_definitions(MurmurHost PUBLIC
+        MURMUR_HOST=1
+        JUCE_PLUGINHOST_VST3=1)
 endif()
-
-target_link_libraries(Murmur
-    PRIVATE
-        okstudio_kit
-        juce::juce_audio_utils
-        juce::juce_dsp
-        juce::juce_data_structures
-    PUBLIC
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_warning_flags)
 
 # The murmur-mcp stdio bridge: a small process Claude Code (or any local MCP client)
 # launches that discovers the live plugin instance's loopback server and speaks MCP stdio
@@ -72,11 +100,20 @@ endif()
 
 # Unit tests (console, JUCE UnitTest). Build + run:
 #   cmake --build build --target Murmur_tests --config Release && ctest --test-dir build -C Release
-# DspTests.cpp owns main(); StateTests.cpp and McpTests.cpp are self-registering statics only.
-# Both need a real processor (APVTS, state, the MCP bridge), so the tests link the Murmur
-# plugin target.
+# DspTests.cpp owns main(); the other files are self-registering statics only.
+# They need real processors (APVTS, state, the MCP bridge), so the tests link a plugin target.
+# That is MurmurHost when it is built (a strict superset of Murmur: same sources, plus the
+# host classes HostTests.cpp exercises; the only MURMUR_HOST-gated code is createPluginFilter,
+# which no test calls), otherwise plain Murmur and HostTests.cpp is left out.
 enable_testing()
-add_executable(Murmur_tests tests/DspTests.cpp tests/StateTests.cpp tests/McpTests.cpp)
+set(_murmurTestSources tests/DspTests.cpp tests/StateTests.cpp tests/McpTests.cpp)
+if (MURMUR_BUILD_HOST)
+    set(_murmurTestTarget MurmurHost)
+    list(APPEND _murmurTestSources tests/HostTests.cpp)
+else()
+    set(_murmurTestTarget Murmur)
+endif()
+add_executable(Murmur_tests ${_murmurTestSources})
 target_include_directories(Murmur_tests PRIVATE src)
-target_link_libraries(Murmur_tests PRIVATE okstudio_kit juce::juce_dsp juce::juce_data_structures Murmur)
+target_link_libraries(Murmur_tests PRIVATE okstudio_kit juce::juce_dsp juce::juce_data_structures ${_murmurTestTarget})
 add_test(NAME Murmur_tests COMMAND Murmur_tests)

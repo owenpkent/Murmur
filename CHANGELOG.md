@@ -7,6 +7,15 @@ layout may still change and break saved sessions (noted loudly when it does).
 ## [Unreleased]
 
 ### Added
+- **Murmur Host** (`src/host/`, `MURMUR_BUILD_HOST`, second plugin target `MurmurHost`): an audio
+  effect that hosts one instrument VST3 inside itself, plays the engine's MIDI through it and
+  outputs the instrument, so voice in and drums or synth out work on one track. New **Mix**
+  parameter (voice to instrument crossfade, default instrument only), Scan and instrument list,
+  embedded instrument GUI, hosted plugin saved in state, latency = engine + instrument, and a
+  missing instrument shows "Instrument not found" while audio keeps passing. The MIDI is still
+  also sent out. `run.py` launches it by default (`--murmur` for plain Murmur); `build.ps1`
+  builds and installs both VST3s; CI builds it. `tests/HostTests.cpp`. Design:
+  `docs/MURMUR_HOST_DESIGN.md`. Not in the installer yet.
 - Plugin shell on okstudio-juce-kit: VST3 audio effect (audio in, audio passed through,
   MIDI out), plus Standalone.
 - Parameters: mode (Melody/Drums), sensitivity, quantize strength, swing, grid division,

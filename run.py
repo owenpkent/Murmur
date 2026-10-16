@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """The fast prototyping loop: build ONE standalone target and run it.
 
-Double-click this file (or right-click -> Open) to build and launch the Murmur
+Double-click this file (or right-click -> Open) to build and launch Murmur Host
 standalone. No VST3, no signing, no installer, no DAW rescan. The standalone opens
 Murmur on the machine's audio input (sing into the mic) and shows the MIDI it would emit.
 Reach for build.ps1 only when a change needs a real Live load test (bus layout, plugin
 classification, installer, updater).
 
-    py run.py                # build + launch the Murmur standalone
+    py run.py                # build + launch Murmur Host standalone (voice in, hosted instrument out)
+    py run.py --murmur       # run plain Murmur (MIDI only, silent) instead of Murmur Host
     py run.py --no-build     # just relaunch what is already built
 
 This is the implementation; run.ps1 is a shim that forwards to it, so there is one
@@ -543,7 +544,7 @@ def build_stamp() -> str:
     return f'{stamp}\n  "{subject}"' if subject else stamp
 
 
-def stale_sources(exe: str) -> list:
+def stale_sources(exe: str, host: bool) -> list:
     """Source files newer than the binary about to be launched, newest first.
 
     The whole reason this exists (2026-08-23): a day-old Murmur standalone was mistaken for a current
@@ -563,8 +564,11 @@ def stale_sources(exe: str) -> list:
         return []
     # Everything under src/ is compiled into the plugin target. Headers count: they are
     # what the compiler reads, whatever the target lists.
+    skip = set() if host else {os.path.join(ROOT, "src", "host")}
     newer = []
     for dirpath, _dirnames, filenames in os.walk(os.path.join(ROOT, "src")):
+        if dirpath in skip:
+            continue
         for name in filenames:
             if not name.endswith((".cpp", ".h", ".hpp")):
                 continue
@@ -583,6 +587,8 @@ def stale_sources(exe: str) -> list:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build and launch the Murmur standalone.")
+    parser.add_argument("--murmur", action="store_true",
+                        help="run plain Murmur (MIDI only, silent) instead of Murmur Host")
     parser.add_argument("--no-build", action="store_true",
                         help="skip the build and just relaunch what is already there")
     parser.add_argument("--config", default="Release")
@@ -596,7 +602,10 @@ def main() -> int:
 
     os.chdir(ROOT)
 
-    target, artefacts, exe_name = "Murmur_Standalone", "Murmur_artefacts", "Murmur.exe"
+    if args.murmur:
+        target, artefacts, exe_name = "Murmur_Standalone", "Murmur_artefacts", "Murmur.exe"
+    else:
+        target, artefacts, exe_name = "MurmurHost_Standalone", "MurmurHost_artefacts", "Murmur Host.exe"
 
     exe = os.path.join(ROOT, "build", artefacts, args.config, "Standalone", exe_name)
     window_title = exe_name[: -len(".exe")]
@@ -658,7 +667,7 @@ def main() -> int:
 
     # And the warning that is the point of all this. Only reachable with --no-build: everything
     # scanned is compiled into this target, so a build that just ran relinked past all of it.
-    stale = stale_sources(exe)
+    stale = stale_sources(exe, host=not args.murmur)
     if stale:
         newest = os.path.relpath(stale[0], ROOT)
         print(f"{YELLOW}  This binary is older than {len(stale)} source "
@@ -666,6 +675,9 @@ def main() -> int:
         print(f"{YELLOW}  Newest: {newest}. Run it again without --no-build to rebuild.{RESET}")
 
     print(f"{GREY}  Pick your microphone under Options > Audio/MIDI Settings if it is silent.{RESET}")
+    if not args.murmur:
+        print(f"{GREY}  Silent? Press Scan, then pick a drum sampler or synth in the Instrument list; "
+              f"Murmur Host reloads it next launch.{RESET}")
     return 0
 
 

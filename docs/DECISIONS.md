@@ -39,9 +39,9 @@ rather than structure: the reference-manual and dataset folders, the chord, arpe
 host code, and the docs that describe them. Murmur has no `LINE_INTERACTION.md` for the same
 reason: in Keys it is about four arp lines hearing each other, and Murmur has one voice.
 
-- **`run.py` launches the plain Standalone.** Keys's default is its Host variant, which hosts a
-  synth in-process so a click makes sound. Murmur has nothing to host: the Standalone opens on
-  the machine's audio input, which is the whole test (sing into the mic).
+- **`run.py` launches Murmur Host (changed 2026-10-15).** It first launched the plain Standalone
+  because Murmur had nothing to host. Murmur Host now exists, so, as in Keys, the default is the
+  Host variant (a voice makes sound in-process); `--murmur` runs the plain one.
 - **No `/STACK` raise in the tests.** Keys needs 8 MB because one test function holds eighty
   engine locals in one frame. Murmur's suite has no such frame; add the option the day it does.
 
@@ -64,3 +64,12 @@ thin shell around `MurmurEngine`: mono mix in, `process`, `drainMidi` out.
   calibrated voice comes back with the session.
 - **Drum notes are fixed General MIDI Drum Rack notes** (36, 38, 42, 46). There is no mapping
   UI; the engine exposes the table (`drumNotes()`) for one later.
+
+**Murmur Host (2026-10-15).** Plain Murmur emits MIDI only, so Live needs a second track taking
+"MIDI From Murmur". Murmur Host hosts one instrument VST3 so one audio track does it all.
+Mirrors Keys Host (VST3 only, one slot, message-thread load bracketed by `suspendProcessing`,
+state holds path plus plugin blob). It stays an `AUDIO_EFFECT` because it needs the voice in.
+The Mix parameter exists only in the Host layout. Deliberately different from Keys Host: the
+instrument list comes from an explicit Scan (instruments only, cached) rather than a publisher
+folder browser; the instrument GUI is embedded below Murmur's UI rather than a floating window;
+no fader bank. Not shipped in the installer, matching Keys, whose installer ships Keys only.

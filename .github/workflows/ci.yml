@@ -69,6 +69,11 @@ jobs:
       - name: Build VST3
         run: cmake --build build --config Release --target Murmur_VST3
 
+      # Murmur Host (okstudio_add_plugin(MurmurHost ...) -> target MurmurHost_VST3) is
+      # MURMUR_BUILD_HOST, default ON. It also compiles the host classes the tests link.
+      - name: Build Murmur Host VST3
+        run: cmake --build build --config Release --target MurmurHost_VST3
+
       # The murmur-mcp stdio shim (okstudio_add_mcp_shim(murmur-mcp) -> target murmur-mcp) is
       # MURMUR_BUILD_MCP_SHIM, default ON in CMakeLists.txt. Build it so a broken shim fails CI.
       - name: Build the MCP shim
@@ -84,4 +89,6 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: Murmur-VST3-win64
-          path: build/Murmur_artefacts/Release/VST3/Murmur.vst3
+          path: |
+            build/Murmur_artefacts/Release/VST3/Murmur.vst3
+            build/MurmurHost_artefacts/Release/VST3/Murmur Host.vst3

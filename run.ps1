@@ -1,4 +1,5 @@
 param(
+    [switch]$Murmur,    # run plain Murmur (MIDI only, silent) instead of Murmur Host
     [switch]$NoBuild,   # skip the build and just relaunch what is already there
     [switch]$Hold,      # pause on failure (for a console that closes when this returns)
     [string]$Config = "Release"
@@ -27,6 +28,7 @@ if (-not $exe) {
 $argv = @("$PSScriptRoot\run.py", "--config", $Config)
 if ($NoBuild) { $argv += "--no-build" }
 if ($Hold)    { $argv += "--hold" }
+if ($Murmur)  { $argv += "--murmur" }
 
 & $exe @argv
 

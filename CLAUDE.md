@@ -15,6 +15,9 @@ Rack. A "dynamic quantize" (strength, swing, grid, free-tempo grid inference whe
 stopped) tightens the timing. Part of the OK Studio line (Undertow = bass, Beatform = drums,
 Keys = the played keyboard, Murmur = the voice).
 
+**Murmur Host** (`src/host/`, second target `MurmurHost`) is the one-track variant: it hosts one
+instrument VST3 inside itself and outputs its audio. See `docs/MURMUR_HOST_DESIGN.md`.
+
 **The difference from every other plugin in the line: it takes AUDIO IN.** It is classified
 with `okstudio_add_plugin(... AUDIO_EFFECT)`: not an instrument, not a MIDI effect. Audio
 passes through unchanged, MIDI goes out, and `acceptsMidi()` stays true (Ableton refuses a
@@ -24,8 +27,9 @@ as "MIDI From".
 ## Build & Run
 
 **Default dev loop: `run.py`.** Do not send Owen to Ableton to try a change. It closes the
-running Standalone, builds exactly one Standalone target, and relaunches it; the Standalone
-opens on the machine's audio input, so singing into the mic shows the analysis with no DAW.
+running Standalone, builds exactly one Standalone target (Murmur Host by default, `--murmur`
+for plain Murmur), and relaunches it; the Standalone opens on the machine's audio input, so
+singing into the mic shows the analysis with no DAW, and with an instrument loaded you hear it.
 Smart App Control is enforced here and dev builds are unsigned, so the *launch* of a freshly
 linked exe can be held while Windows vets it; `run.py` waits that out with a counter on
 screen (`docs/BUILD.md`).
@@ -35,7 +39,8 @@ console holds open on failure). Never tell him to type a command when he could c
 instead. `run.ps1` is a thin shim over `run.py`, so there is one copy of the logic.
 
 ```powershell
-py run.py              # build + launch the Murmur Standalone
+py run.py              # build + launch the Murmur Host Standalone
+py run.py --murmur     # plain Murmur Standalone
 py run.py --no-build   # just relaunch what is already built
 ```
 
@@ -47,11 +52,11 @@ Full build and test:
 ```powershell
 .\build.ps1 -Test        # Release VST3 + Standalone, run unit tests, copy to Ableton
 cmake -B build -G "Visual Studio 17 2022" -A x64 -DMURMUR_COPY_PLUGIN=OFF
-cmake --build build --config Release --target Murmur_VST3 Murmur_Standalone Murmur_tests
+cmake --build build --config Release --target Murmur_VST3 MurmurHost_VST3 Murmur_Standalone MurmurHost_Standalone Murmur_tests
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Artefacts: `build/Murmur_artefacts/Release/{VST3,Standalone}/`. Note the cmake snippet passes
+Artefacts: `build/Murmur_artefacts/Release/{VST3,Standalone}/` and `build/MurmurHost_artefacts/...`. Note the cmake snippet passes
 `-DMURMUR_COPY_PLUGIN=OFF`, so it builds but does **not** install to the DAW folder; if Owen
 reports "the VST didn't update", run `build.ps1` (it copies the `.vst3` to
 `%USERPROFILE%\Ableton\vst3`, his Ableton custom folder; `%USERPROFILE%\VST3` is NOT scanned)
@@ -91,17 +96,22 @@ src/dsp/                MurmurEngine, PitchTracker, OnsetDetector, NoteSegmenter
                         DrumFeatures, DrumClassifier, Quantizer (header-only)
 src/ui/                 Segmented (mode / grid toggles), LevelBar
 src/mcp/                MurmurMcp (the MCP tool table)
-tests/                  DspTests (owns main), StateTests, McpTests
+src/host/                MurmurHostProcessor / MurmurHostEditor (Murmur Host target only)
+tests/                  DspTests (owns main), StateTests, McpTests, HostTests
 installer/              murmur.iss, signing-thumbprint.txt, generate_brand.py, wizard images
 assets/                 Murmur.svg (master), Murmur.ico, logo-1024.png
 scripts/                capture-window.ps1 (docs screenshots), downloads.ps1
 docs/                   ARCHITECTURE, BUILD, CONTROLS, DECISIONS, DESIGN, MCP, REFERENCES,
-                        RELEASE, ABLETON_LIVE
+                        RELEASE, ABLETON_LIVE, MURMUR_HOST_DESIGN
 ```
 
 ## Invariants (don't break)
 
-- **Audio passes through untouched.** `processBlock` only reads the buffer. The MIDI buffer is
+- **Audio passes through untouched** in plain Murmur, and in Murmur Host when no instrument is
+  loaded. `MurmurProcessor::processBlock` only reads the buffer.
+- **Murmur Host: load/eject only on the message thread, bracketed by `suspendProcessing`.** The
+  audio thread only reads `instrument`. `MURMUR_HOST` gates only `createPluginFilter`; the tests
+  link `MurmurHost`, so keep host-only behaviour out of other `#if`s. The MIDI buffer is
   cleared first because Murmur authors the whole outgoing stream.
 - **`acceptsMidi()` stays true** even though nothing is expected on it: Live refuses a plugin
   with no MIDI input bus, and only a Live load test shows it.

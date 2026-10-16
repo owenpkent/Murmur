@@ -44,3 +44,18 @@ hat 46.
 
 The same controls are reachable from Claude Code through the embedded MCP server. That is an
 additional way in and not a replacement: see [MCP.md](MCP.md).
+
+## Murmur Host only
+
+Murmur Host has every control above, plus a strip under them. Same gestures, same targets.
+
+| Control | Parameter id | Gesture | Result |
+|---------|--------------|---------|--------|
+| **Mix** knob | `mix` | Drag, or scroll over it | Crossfades the dry voice and the hosted instrument: 0% is the voice only, 100% is the instrument only. Default 100%. |
+| **Instrument** list | none | Click to open, click an instrument | Loads that instrument VST3 (instruments only, VST3 only). The list is what the last Scan found. |
+| **Scan** button | none | Click | Looks through the VST3 folders (`C:\Program Files\Common Files\VST3` and `%USERPROFILE%\Ableton\vst3`) on a background thread and lists the instruments found. The list is remembered between sessions. |
+| **Hide GUI / Show GUI** button | none | Click | Shows or hides the instrument's own editor below the strip. |
+| **Eject** button | none | Click | Unloads the instrument; the voice then passes through. |
+
+The status line under the list says what is playing, or "Instrument not found" if a saved
+instrument is missing.

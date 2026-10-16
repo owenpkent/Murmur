@@ -57,3 +57,18 @@ There is no timer and no scheduling: Murmur plays nothing on request. Tools and 
 Mode toggle, knobs, grid control, level bar, last note/hit and free-tempo readout. The 30 Hz
 timer polls `getInputLevel`, `getLastNote`, `getInferredBpm`, `isCalibrating`. Scale controls
 show only in Melody; the Calibrate row only in Drums.
+
+## Murmur Host
+
+`MurmurHostProcessor` (`src/host/`) subclasses `MurmurProcessor` and is built as a second plugin
+target (`MurmurHost`, `MURMUR_BUILD_HOST`, default ON) from the same sources plus `src/host/`.
+Still an `AUDIO_EFFECT`. Each block it copies the voice, runs `MurmurProcessor::processBlock`
+(engine MIDI into the host buffer, audio untouched), hands a copy of that MIDI to the hosted
+instrument's `processBlock`, and writes `dry * (1 - mix) + instrument * mix` to the output. The
+dry voice goes through a ring buffer delayed by the reported latency so it lines up with the
+instrument. Reported latency is the engine's plus the instrument's (`setExtraLatency`).
+Instruments are VST3 only and must report `isInstrument`. State adds a `hostedInstrument`
+child (path, name, base64 plugin state); a path that no longer exists is kept so a re-save does
+not lose it. `MurmurHostEditor` embeds the full `MurmurEditor`, a strip (Instrument list,
+Scan, Hide/Show GUI, Eject, Mix) and the instrument's own editor below. Design:
+[MURMUR_HOST_DESIGN.md](MURMUR_HOST_DESIGN.md).
