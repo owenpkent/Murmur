@@ -132,9 +132,16 @@ Lanes are `minHitPx` tall. On Stop, the view opens fitted to the take's pitch ra
   make sound as good.
 - **Offline render, not real time.** After an edit, a background thread re-renders only the
   notes that changed (plus a short crossfade either side) into a corrected copy of the take.
-  Per analysis frame the shift is `target - sung`, where the target curve is
-  `targetNote + drift * (frameMidi - sungMidi)`; the shift is fed to the stretcher in short
-  chunks.
+  Per analysis frame the shift is `out - frameMidi`, where `moved = frameMidi + (targetNote -
+  detectedNote)` and `out = targetNote + drift * (moved - targetNote)`. So an untouched note
+  (target equals detected, drift 1) is not processed at all and sounds exactly as sung; a moved
+  note keeps its own intonation and vibrato; drift 0 pins it to the note centre (full pitch
+  correction). Unvoiced frames take the note's plain move. The shift is fed to the stretcher
+  in short chunks, with formants preserved (`setFormantFactor(1, true)`) so a moved voice does
+  not turn into a chipmunk.
+- **Pinned versions (2026-10-17):** signalsmith-stretch 1.4.0 (commit a670068) and its one
+  dependency, signalsmith-linear 0.6.4 (commit de55e6a), both MIT, header-only, with linear's
+  built-in FFT (no IPP, PFFFT or Accelerate on Windows).
 - **Playback output** is the corrected take instead of the live input. In Murmur Host it becomes
   the "dry" side of Mix, so Mix still crossfades voice and instrument.
 - **Invariant change, on purpose:** "audio passes through untouched" becomes "audio passes

@@ -26,6 +26,20 @@ if (MURMUR_COPY_PLUGIN AND WIN32)
     set(_murmurCopy COPY_DIR "${MURMUR_VST3_COPY_DIR}")
 endif()
 
+# Vendored header-only libraries (third_party/README.md). INTERFACE targets with SYSTEM include
+# dirs, so their warnings stay out of Murmur's build. No FetchContent, no network. The include
+# dirs hold the upstream forwarding headers, so <signalsmith-stretch/signalsmith-stretch.h> and
+# the <signalsmith-linear/...> includes inside it both resolve. MSVC needs /bigobj for the
+# many templates in a TU that instantiates the stretcher (linear's own CMake does the same).
+add_library(signalsmith_linear INTERFACE)
+target_include_directories(signalsmith_linear SYSTEM INTERFACE third_party/signalsmith-linear/include)
+add_library(signalsmith_stretch INTERFACE)
+target_include_directories(signalsmith_stretch SYSTEM INTERFACE third_party/signalsmith-stretch/include)
+target_link_libraries(signalsmith_stretch INTERFACE signalsmith_linear)
+if (MSVC)
+    target_compile_options(signalsmith_stretch INTERFACE /bigobj)
+endif()
+
 # Every Murmur plugin target shares one source list and one set of definitions, so Murmur and
 # Murmur Host cannot drift apart (Keys does the same with keys_configure_target).
 function(murmur_configure_target tgt)
@@ -50,6 +64,7 @@ function(murmur_configure_target tgt)
     target_link_libraries(${tgt}
         PRIVATE
             okstudio_kit
+            signalsmith_stretch
             juce::juce_audio_utils
             juce::juce_dsp
             juce::juce_data_structures
@@ -108,7 +123,7 @@ endif()
 # host classes HostTests.cpp exercises; the only MURMUR_HOST-gated code is createPluginFilter,
 # which no test calls), otherwise plain Murmur and HostTests.cpp is left out.
 enable_testing()
-set(_murmurTestSources tests/DspTests.cpp tests/StateTests.cpp tests/McpTests.cpp tests/TakeTests.cpp tests/TakeCaptureTests.cpp tests/TakePlaybackTests.cpp tests/TakeMidiTests.cpp)
+set(_murmurTestSources tests/DspTests.cpp tests/StateTests.cpp tests/McpTests.cpp tests/TakeTests.cpp tests/TakeCaptureTests.cpp tests/TakePlaybackTests.cpp tests/TakeMidiTests.cpp tests/VoiceRendererTests.cpp)
 if (MURMUR_BUILD_HOST)
     set(_murmurTestTarget MurmurHost)
     list(APPEND _murmurTestSources tests/HostTests.cpp)
@@ -117,5 +132,5 @@ else()
 endif()
 add_executable(Murmur_tests ${_murmurTestSources})
 target_include_directories(Murmur_tests PRIVATE src)
-target_link_libraries(Murmur_tests PRIVATE okstudio_kit juce::juce_dsp juce::juce_data_structures ${_murmurTestTarget})
+target_link_libraries(Murmur_tests PRIVATE okstudio_kit signalsmith_stretch juce::juce_dsp juce::juce_data_structures ${_murmurTestTarget})
 add_test(NAME Murmur_tests COMMAND Murmur_tests)
