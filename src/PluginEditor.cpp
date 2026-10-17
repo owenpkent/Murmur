@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "StandaloneSupport.h"
 #include <okstudio/MouseOnly.h>
 #include <okstudio/Scales.h>
 
@@ -25,10 +26,21 @@ namespace
 MurmurEditor::MurmurEditor(MurmurProcessor& p, bool checkForUpdates)
     : juce::AudioProcessorEditor(p), processor(p),
       modeToggle(p.apvts, "mode", { "Melody", "Drums" }, 24.0f),
-      gridToggle(p.apvts, "grid", { "1/4", "1/8", "1/16", "1/8T", "1/16T", "1/32" }, 14.0f)
+      gridToggle(p.apvts, "grid", { "1/4", "1/8", "1/16", "1/8T", "1/16T", "1/32" }, 14.0f),
+      viewToggle({ "Live", "Edit" }, 16.0f, [this](int i)
+                 {
+                     editShown = i == 1;
+                     applyModeVisibility();
+                     if (onViewChanged)
+                         onViewChanged();
+                     resized();
+                 }),
+      takeView(p)
 {
     setLookAndFeel(&lnf);
     okstudio::ui::makeMouseOnly(*this);
+    if (p.wrapperType == juce::AudioProcessor::wrapperType_Standalone)
+        standalone::unmuteInput(); // Murmur is deaf otherwise; see StandaloneSupport.h
 
     styleLabel(title, "Murmur", 26.0f, okstudio::theme::text);
     styleLabel(subtitle, "voice to MIDI", 13.0f);
@@ -47,6 +59,8 @@ MurmurEditor::MurmurEditor(MurmurProcessor& p, bool checkForUpdates)
     addAndMakeVisible(levelBar);
     addAndMakeVisible(modeToggle);
     addAndMakeVisible(gridToggle);
+    addAndMakeVisible(viewToggle);
+    addChildComponent(takeView);
 
     addKnob(sensitivity, "Sensitivity", "sensitivity");
     addKnob(quantize, "Quantize", "quantize");
@@ -183,16 +197,26 @@ juce::String MurmurEditor::drumName(int note)
 
 void MurmurEditor::applyModeVisibility()
 {
+    // Live view: today's controls. Edit view: only the header and the take view.
+    const bool live = ! editShown;
     const bool drums = drumsShown;
-    for (auto* c : { (juce::Component*) &rootBox, (juce::Component*) &scaleBox, (juce::Component*) &rootLabel,
-                     (juce::Component*) &scaleLabel, (juce::Component*) &scaleLockButton })
-        c->setVisible(! drums);
+    for (auto* c : std::initializer_list<juce::Component*> { &modeToggle, &gridToggle, &gridLabel, &levelBar,
+                                                            &levelLabel, &lastReadout, &sensitivity.slider,
+                                                            &sensitivity.name, &sensitivity.value, &quantize.slider,
+                                                            &quantize.name, &quantize.value, &swing.slider,
+                                                            &swing.name, &swing.value })
+        c->setVisible(live);
+    for (auto* c : std::initializer_list<juce::Component*> { &rootBox, &scaleBox, &rootLabel, &scaleLabel,
+                                                            &scaleLockButton })
+        c->setVisible(live && ! drums);
     for (int i = 0; i < numClasses; ++i)
     {
-        calibButtons[(size_t) i].setVisible(drums);
-        clearButtons[(size_t) i].setVisible(drums);
+        calibButtons[(size_t) i].setVisible(live && drums);
+        clearButtons[(size_t) i].setVisible(live && drums);
     }
-    calibHint.setVisible(drums);
+    calibHint.setVisible(live && drums);
+    takeView.setVisible(editShown);
+    takeView.setDrumsMode(drums);
     repaint();
 }
 
@@ -264,10 +288,19 @@ void MurmurEditor::resized()
 
     auto header = area.removeFromTop(54);
     title.setBounds(header.removeFromLeft(130));
-    subtitle.setBounds(header.removeFromLeft(120).withTrimmedTop(18));
+    subtitle.setBounds(header.removeFromLeft(100).withTrimmedTop(18));
+    viewToggle.setBounds(header.removeFromLeft(180).withSizeKeepingCentre(180, hitH));
+    header.removeFromLeft(12);
     if (updateButton.isVisible())
         updateButton.setBounds(header.removeFromRight(170).withSizeKeepingCentre(170, hitH));
     tempoReadout.setBounds(header);
+
+    if (editShown)
+    {
+        area.removeFromTop(8);
+        takeView.setBounds(area);
+        return;
+    }
 
     area.removeFromTop(22);
     modeToggle.setBounds(area.removeFromTop(68));

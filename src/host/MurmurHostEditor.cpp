@@ -139,6 +139,7 @@ MurmurHostEditor::MurmurHostEditor(MurmurHostProcessor& p)
 
     addAndMakeVisible(murmurEditor);
     murmurEditor.setResizable(false, false); // the window owns sizing
+    murmurEditor.onViewChanged = [this] { fitWindow(); }; // Edit view asks for a taller editor
 
     styleLabel(instrumentLabel, "Instrument", 12.0f, okstudio::theme::textDim);
     styleLabel(status, "", 13.0f, okstudio::theme::textDim);
@@ -304,7 +305,9 @@ void MurmurHostEditor::refreshStatus()
     else
     {
         status.setColour(juce::Label::textColourId, okstudio::theme::textDim);
+        const bool standaloneApp = host.wrapperType == juce::AudioProcessor::wrapperType_Standalone;
         status.setText(host.hasInstrument() ? "Playing " + host.instrumentName()
+                       : standaloneApp      ? "No instrument: silent until you Scan and pick one"
                                             : "No instrument: the voice passes through",
                        juce::dontSendNotification);
         status.setTooltip({});
@@ -326,7 +329,7 @@ void MurmurHostEditor::fitWindow()
 {
     const int w = juce::jmax(MurmurEditor::defaultWidth,
                              instEditor != nullptr && instShown ? instEditor->getWidth() : 0);
-    const int h = MurmurEditor::defaultHeight + stripH + instrumentEditorHeight();
+    const int h = murmurEditor.preferredHeight() + stripH + instrumentEditorHeight();
     if (instEditor != nullptr)
         instEditor->setVisible(instShown);
     if (w != getWidth() || h != getHeight())
@@ -339,13 +342,13 @@ void MurmurHostEditor::paint(juce::Graphics& g)
 {
     g.fillAll(okstudio::theme::background);
     g.setColour(okstudio::theme::panel);
-    g.fillRect(juce::Rectangle<int>(0, MurmurEditor::defaultHeight, getWidth(), stripH));
+    g.fillRect(juce::Rectangle<int>(0, murmurEditor.preferredHeight(), getWidth(), stripH));
 }
 
 void MurmurHostEditor::resized()
 {
     auto area = getLocalBounds();
-    murmurEditor.setBounds(area.removeFromTop(MurmurEditor::defaultHeight).withWidth(MurmurEditor::defaultWidth));
+    murmurEditor.setBounds(area.removeFromTop(murmurEditor.preferredHeight()).withWidth(MurmurEditor::defaultWidth));
 
     auto strip = area.removeFromTop(stripH).reduced(16, 8);
     auto mix = strip.removeFromRight(110);

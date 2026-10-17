@@ -7,6 +7,22 @@ layout may still change and break saved sessions (noted loudly when it does).
 ## [Unreleased]
 
 ### Added
+- **Take Editor** (Live | Edit toggle): record a take, see every note as a blob on a pitch roll
+  with your sung pitch curve through it, and drag blobs to fix the pitch (Move / Reset / Erase,
+  Undo, Snap to scale, time zoom and Fit). Melody mode. **Play** runs the take's notes as MIDI
+  through the instrument (or out of the track), from a start marker set by clicking the time
+  ruler, with a playhead on the roll; an anchored take also follows the host transport. See `docs/CONTROLS.md` and `docs/TAKE_EDITOR_DESIGN.md`.
+- **Take Editor voice (Phase B)**: the edit now changes the sound. While a take plays, the
+  output is the corrected take (signalsmith-stretch, formants kept, only the edited notes
+  re-rendered in the background) instead of the live input, also in the Standalone and as the
+  dry side of Mix in Murmur Host; it fades in and out over 5 ms. New **Drift** mode: drag a blob
+  left or right to flatten the wobble (0%) or keep it (100%); the curve shows how it will sound.
+  Status shows "Rendering voice..." and "No take audio: MIDI only". MCP: `edit_take` `drift`,
+  and `get_take` reports each note's `drift`, `hasAudio` and `renderingVoice`.
+- **Drag MIDI** tile in the Take Editor: drag the take (with your pitch edits) out of the
+  window into Live as a MIDI clip. The file is also kept in `<takes folder>/MIDI/`.
+- **MCP take tools**: `get_take`, `edit_take` (shift, set, reset, delete, snap_to_scale, undo)
+  and `take_transport` (record, stop_recording, play, stop). See `docs/MCP.md`.
 - **Murmur Host** (`src/host/`, `MURMUR_BUILD_HOST`, second plugin target `MurmurHost`): an audio
   effect that hosts one instrument VST3 inside itself, plays the engine's MIDI through it and
   outputs the instrument, so voice in and drums or synth out work on one track. New **Mix**
@@ -41,6 +57,8 @@ layout may still change and break saved sessions (noted loudly when it does).
   download counts).
 
 ### Changed
+- The Standalone apps no longer start with the mic muted, and no longer play the voice out: you
+  hear only the hosted instrument, so a mic and speakers cannot feed back. The VST3 is unchanged.
 - CI builds Murmur Host and the MCP shim, cancels superseded runs, and checks out the private kit with a
   read-only deploy key (`KIT_DEPLOY_KEY`) instead of a token.
 - `.gitattributes` forces LF in the repository.

@@ -8,6 +8,39 @@ Architecture section is the other half, the map of what is true today;
 claim is kept where it sits and marked there rather than deleted, because knowing why a rule
 existed is what stops it being reinvented.
 
+**The Standalone hears the mic and plays no voice (2026-10-17).** JUCE's Standalone wrapper
+mutes the audio input by default to stop a mic feeding back through the speakers, which left
+the Standalone, the default dev loop, unable to hear anything. Owen picked silencing the voice
+on the way out in the Standalone only (Murmur Host still plays its instrument) and unmuting the
+input from the editor through `StandalonePluginHolder` (`src/StandaloneSupport.*`), over
+clicking Settings to unmute by hand. The VST3 still passes audio through untouched.
+
+**The edited voice is audible, and a playing take replaces the live voice (2026-10-17).** Phase B
+part 2. Decisions beyond the design: one render job at a time with a dirty flag (an edit during
+a render folds into one more render, not a queue); an incremental render re-renders the closure
+of overlapping padded regions from the original so it equals a full render exactly; the voice
+fades over 5 ms and cross-fades with whatever is in the block, so the Standalone (silent dry)
+and Murmur Host (Mix dry side) need no special case; Murmur Host copies its dry block after
+`MurmurProcessor::processBlock` instead of before, which drops its own Standalone branch; the
+voice is timed with the engine's latency like the MIDI (the Host's dry ring adds the
+instrument's). The corrected take plays in the Standalone: it is a recording, so it cannot
+feed back. Audio that no longer matches the sample rate plays no voice rather than at the wrong
+pitch.
+
+**A Melodyne-style take editor, MIDI first, voice second (2026-10-17).** Owen asked for
+"something like melodyne where you can shift pitch. maybe related to lattice". Of four options
+(edit the MIDI only, re-pitch the voice, the first then the second, live auto-tune) he chose to
+build the editor once and land it in two phases: Phase A records a take, shows each note as a
+blob over the sung pitch curve, and dragging a blob changes the MIDI the take plays back;
+Phase B re-pitches the recorded voice with the same gesture, using signalsmith-stretch (MIT)
+rather than Rubber Band (GPL or paid). Lattice's `RollCanvas` is not reused as code, because its
+tick-grid, whole-semitone model has no place for a fractional sung pitch or a curve; its
+interaction rules are reused (no handles, mode buttons, lanes never below the hit floor, hint
+strip, undo button). A take is analysed by running the live engine's own tracker, onset
+detector and segmenter offline over the recording, so the editor shows the notes the singer
+heard live. The take's audio is a WAV on disk, never inside the plugin state. Design:
+[TAKE_EDITOR_DESIGN.md](TAKE_EDITOR_DESIGN.md).
+
 **The MCP surface observes and configures; it does not play (2026-10-15).** The repo was
 brought to Keys's structure, and Keys's MCP bridge was the template. Most of Keys's tools
 (`play_notes`, `play_sequence`, the chord-pad and arp tools) have no Murmur equivalent, and

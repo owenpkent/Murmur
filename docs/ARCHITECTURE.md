@@ -67,7 +67,8 @@ show only in Melody; the Calibrate row only in Drums.
 `MurmurHostProcessor` (`src/host/`) subclasses `MurmurProcessor` and is built as a second plugin
 target (`MurmurHost`, `MURMUR_BUILD_HOST`, default ON) from the same sources plus `src/host/`.
 Still an `AUDIO_EFFECT`. Each block it copies the voice, runs `MurmurProcessor::processBlock`
-(engine MIDI into the host buffer, audio untouched), hands a copy of that MIDI to the hosted
+(engine MIDI into the host buffer; the audio is untouched unless a take is playing, when it is
+the corrected take), copies the buffer as the dry voice, hands a copy of that MIDI to the hosted
 instrument's `processBlock`, and writes `dry * (1 - mix) + instrument * mix` to the output. The
 dry voice goes through a ring buffer delayed by the reported latency so it lines up with the
 instrument. Reported latency is the engine's plus the instrument's (`setExtraLatency`).
@@ -76,3 +77,34 @@ child (path, name, base64 plugin state); a path that no longer exists is kept so
 not lose it. `MurmurHostEditor` embeds the full `MurmurEditor`, a strip (Instrument list,
 Scan, Hide/Show GUI, Eject, Mix) and the instrument's own editor below. Design:
 [MURMUR_HOST_DESIGN.md](MURMUR_HOST_DESIGN.md).
+
+## Take Editor
+
+A Melodyne-style editor in `MurmurProcessor`, so both targets have it: record a take, analyse it
+offline with the engine's own tracker and segmenter, drag note blobs to change pitch. Model and
+analyser are pure headers under `src/take/`. Design and build order:
+[TAKE_EDITOR_DESIGN.md](TAKE_EDITOR_DESIGN.md).
+
+Playback (`take/TakePlayer.h`) replaces live MIDI: the message thread publishes a sorted note
+snapshot (two preallocated slots, atomic pointer plus in-use flag, as `TakeCapture`) on every
+`takeVersion` bump, and `processBlock` renders it at take time plus latency, free-running or
+following the host, with a sounding-notes table so every stop, seek or edit releases cleanly.
+While it plays the engine still analyses the audio but its MIDI is dropped.
+
+Phase B makes the edit audible (`take/VoiceRenderer.h`, `take/VoicePlayer.h`). The processor
+keeps the take's original mono audio (`takeAudio`, a `shared_ptr<const vector<float>>` owned by
+the message thread; set when an analysis or a restore job finishes, cleared by `clearTake`; a
+missing WAV leaves it null, so MIDI plays and the voice is silent). Every `bumpTakeVersion`
+calls `scheduleVoiceRender`, which compares the notes with `renderedSnapshot` and, if any note
+changed, runs one job on `takePool`: copy the previous corrected buffer and
+`VoiceRenderer::renderChanged` (changed and removed notes, plus the closure of notes whose padded
+regions overlap, restored to the original and re-rendered in index order, so the result equals
+`renderAll`). One render at a time: edits that land meanwhile set `renderDirty` and one more
+render follows with the latest take. Results come back in `pendingRender` through the same
+AsyncUpdater, dropped if the generation moved on, and are published to `VoicePlayer` (two slots
+that own the buffers, atomic pointer plus in-use flag; a buffer is freed only on the message
+thread, two publishes later). In `processBlock`, after the MIDI, `VoicePlayer::process`
+cross-fades the block (the live input, or silence in the Standalone) with the corrected take at
+take position minus the engine latency, the same timing as the MIDI, with a 5 ms gain ramp so
+starting and stopping never clicks. Not playing and faded out, the block is not touched.
+Audio at another sample rate than the host's plays no voice.

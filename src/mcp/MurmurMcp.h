@@ -10,7 +10,8 @@ class MurmurProcessor;
 // Embeds the kit's MCP server (okstudio::mcp::Server) so Claude Code, or any other local MCP
 // client, can read and drive Murmur: read and set parameters, read the live voice analysis
 // (input level, last note or hit, inferred free tempo, host transport) and the drum
-// calibration, and start or clear a calibration. See docs/MCP.md.
+// calibration, start or clear a calibration, and read, edit, record and play back the Take
+// Editor's take. See docs/MCP.md.
 //
 // Every tool's `run` lambda is called on the MESSAGE THREAD (the server marshals it there),
 // the same thread the editor lives on, so tool bodies call straight into MurmurProcessor and
@@ -48,6 +49,9 @@ private:
     okstudio::mcp::Tool toolGetCalibration();
     okstudio::mcp::Tool toolStartCalibration();
     okstudio::mcp::Tool toolClearCalibration();
+    okstudio::mcp::Tool toolGetTake();
+    okstudio::mcp::Tool toolEditTake();
+    okstudio::mcp::Tool toolTakeTransport();
 
     MurmurProcessor& processor;
     okstudio::mcp::Server server;

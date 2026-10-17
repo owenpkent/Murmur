@@ -18,6 +18,10 @@ Keys = the played keyboard, Murmur = the voice).
 **Murmur Host** (`src/host/`, second target `MurmurHost`) is the one-track variant: it hosts one
 instrument VST3 inside itself and outputs its audio. See `docs/MURMUR_HOST_DESIGN.md`.
 
+**Take Editor** (`src/take/`, in progress) is a Melodyne-style editor in both targets: record a
+take, drag its note blobs to fix pitch. Phase A edits the MIDI, Phase B the voice (done). See
+`docs/TAKE_EDITOR_DESIGN.md`.
+
 **The difference from every other plugin in the line: it takes AUDIO IN.** It is classified
 with `okstudio_add_plugin(... AUDIO_EFFECT)`: not an instrument, not a MIDI effect. Audio
 passes through unchanged, MIDI goes out, and `acceptsMidi()` stays true (Ableton refuses a
@@ -102,13 +106,19 @@ installer/              murmur.iss, signing-thumbprint.txt, generate_brand.py, w
 assets/                 Murmur.svg (master), Murmur.ico, logo-1024.png
 scripts/                capture-window.ps1 (docs screenshots), downloads.ps1
 docs/                   ARCHITECTURE, BUILD, CONTROLS, DECISIONS, DESIGN, MCP, REFERENCES,
-                        RELEASE, ABLETON_LIVE, MURMUR_HOST_DESIGN
+                        RELEASE, ABLETON_LIVE, MURMUR_HOST_DESIGN,
+                        TAKE_EDITOR_DESIGN
 ```
 
 ## Invariants (don't break)
 
 - **Audio passes through untouched** in plain Murmur, and in Murmur Host when no instrument is
-  loaded. `MurmurProcessor::processBlock` only reads the buffer.
+  loaded, **unless a take is playing**: then the corrected take (`take/VoicePlayer.h`, read at
+  take position minus latency, ramped in and out over 5 ms) is the voice instead of the live
+  input, and in Murmur Host it is the dry side of Mix. Otherwise `MurmurProcessor::processBlock`
+  only reads the buffer. **Exception: the Standalone app** unmutes its mic input and plays no
+  live voice out (only a hosted instrument, or a playing take, which is not the mic), so a mic
+  and speakers cannot feed back (`src/StandaloneSupport.h`). Gated on `wrapperType`, never `#if`.
 - **Murmur Host: load/eject only on the message thread, bracketed by `suspendProcessing`.** The
   audio thread only reads `instrument`. `MURMUR_HOST` gates only `createPluginFilter`; the tests
   link `MurmurHost`, so keep host-only behaviour out of other `#if`s. The MIDI buffer is
