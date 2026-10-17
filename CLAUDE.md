@@ -19,7 +19,7 @@ Keys = the played keyboard, Murmur = the voice).
 instrument VST3 inside itself and outputs its audio. See `docs/MURMUR_HOST_DESIGN.md`.
 
 **Take Editor** (`src/take/`, in progress) is a Melodyne-style editor in both targets: record a
-take, drag its note blobs to fix pitch. Phase A edits the MIDI, Phase B the voice. See
+take, drag its note blobs to fix pitch. Phase A edits the MIDI, Phase B the voice (done). See
 `docs/TAKE_EDITOR_DESIGN.md`.
 
 **The difference from every other plugin in the line: it takes AUDIO IN.** It is classified
@@ -113,9 +113,12 @@ docs/                   ARCHITECTURE, BUILD, CONTROLS, DECISIONS, DESIGN, MCP, R
 ## Invariants (don't break)
 
 - **Audio passes through untouched** in plain Murmur, and in Murmur Host when no instrument is
-  loaded. `MurmurProcessor::processBlock` only reads the buffer. **Exception: the Standalone
-  app** unmutes its mic input and plays no voice out (only a hosted instrument), so a mic and
-  speakers cannot feed back (`src/StandaloneSupport.h`). Gated on `wrapperType`, never `#if`.
+  loaded, **unless a take is playing**: then the corrected take (`take/VoicePlayer.h`, read at
+  take position minus latency, ramped in and out over 5 ms) is the voice instead of the live
+  input, and in Murmur Host it is the dry side of Mix. Otherwise `MurmurProcessor::processBlock`
+  only reads the buffer. **Exception: the Standalone app** unmutes its mic input and plays no
+  live voice out (only a hosted instrument, or a playing take, which is not the mic), so a mic
+  and speakers cannot feed back (`src/StandaloneSupport.h`). Gated on `wrapperType`, never `#if`.
 - **Murmur Host: load/eject only on the message thread, bracketed by `suspendProcessing`.** The
   audio thread only reads `instrument`. `MURMUR_HOST` gates only `createPluginFilter`; the tests
   link `MurmurHost`, so keep host-only behaviour out of other `#if`s. The MIDI buffer is

@@ -151,6 +151,55 @@ public:
         return out;
     }
 
+    // Brings `corrected` (the render of `prev`) up to date with `take`, giving the same samples
+    // as renderAll(). Render order matters where two padded regions overlap (each blends over
+    // what is already there), so the work is the closure of the dirty set: every changed or
+    // removed note, plus every note whose padded region overlaps a dirty one, repeatedly. Their
+    // regions go back to the original first, then the ones that need it are rendered in index
+    // order, exactly as renderAll does. Untouched notes are never read.
+    static void renderChanged(const std::vector<float>& original, std::vector<float>& corrected,
+                              const std::vector<RenderedNote>& prev, const Take& take, double sampleRate)
+    {
+        const int count = (int) take.notes.size();
+        std::vector<char> dirty((size_t) count, 0);
+        std::vector<std::pair<double, double>> regions = removedRegions(prev, take);
+        const auto removed = regions;
+        for (int i : changedNotes(prev, take))
+        {
+            dirty[(size_t) i] = 1;
+            regions.emplace_back(take.notes[(size_t) i].start, take.notes[(size_t) i].end);
+        }
+
+        const double reach = 2.0 * padSeconds + 0.001; // two padded regions touch within this
+        for (bool grew = true; grew;)
+        {
+            grew = false;
+            for (int j = 0; j < count; ++j)
+            {
+                if (dirty[(size_t) j])
+                    continue;
+                const auto& n = take.notes[(size_t) j];
+                const bool touches = std::any_of(regions.begin(), regions.end(), [&](const auto& r)
+                                                 { return n.start < r.second + reach && r.first < n.end + reach; });
+                if (touches)
+                {
+                    dirty[(size_t) j] = 1;
+                    regions.emplace_back(n.start, n.end);
+                    grew = true;
+                }
+            }
+        }
+
+        for (const auto& r : removed)
+            restoreRegion(original, corrected, r.first, r.second, sampleRate);
+        for (int j = 0; j < count; ++j)
+            if (dirty[(size_t) j])
+                restoreRegion(original, corrected, take.notes[(size_t) j].start, take.notes[(size_t) j].end, sampleRate);
+        for (int j = 0; j < count; ++j)
+            if (dirty[(size_t) j] && needsRender(take.notes[(size_t) j]))
+                renderRegion(original, corrected, take, take.notes[(size_t) j], sampleRate);
+    }
+
 private:
     using Stretch = signalsmith::stretch::SignalsmithStretch<float>;
 

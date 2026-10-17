@@ -12,6 +12,13 @@ layout may still change and break saved sessions (noted loudly when it does).
   Undo, Snap to scale, time zoom and Fit). Melody mode. **Play** runs the take's notes as MIDI
   through the instrument (or out of the track), from a start marker set by clicking the time
   ruler, with a playhead on the roll; an anchored take also follows the host transport. See `docs/CONTROLS.md` and `docs/TAKE_EDITOR_DESIGN.md`.
+- **Take Editor voice (Phase B)**: the edit now changes the sound. While a take plays, the
+  output is the corrected take (signalsmith-stretch, formants kept, only the edited notes
+  re-rendered in the background) instead of the live input, also in the Standalone and as the
+  dry side of Mix in Murmur Host; it fades in and out over 5 ms. New **Drift** mode: drag a blob
+  left or right to flatten the wobble (0%) or keep it (100%); the curve shows how it will sound.
+  Status shows "Rendering voice..." and "No take audio: MIDI only". MCP: `edit_take` `drift`,
+  and `get_take` reports each note's `drift`, `hasAudio` and `renderingVoice`.
 - **Drag MIDI** tile in the Take Editor: drag the take (with your pitch edits) out of the
   window into Live as a MIDI clip. The file is also kept in `<takes folder>/MIDI/`.
 - **MCP take tools**: `get_take`, `edit_take` (shift, set, reset, delete, snap_to_scale, undo)

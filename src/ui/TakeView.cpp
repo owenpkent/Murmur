@@ -1,5 +1,6 @@
 #include "TakeView.h"
 #include "../take/TakeMidi.h"
+#include "../take/VoiceRenderer.h"
 #include <okstudio/Scales.h>
 
 namespace murmur::ui
@@ -128,6 +129,11 @@ int TakeRoll::snapLane(int lane) const
                                                               (int) boolParam(processor, "scale")));
 }
 
+juce::String TakeRoll::driftHint(float drift)
+{
+    return "Drift " + juce::String(juce::roundToInt(drift * 100.0f)) + "%: " + driftHelp;
+}
+
 void TakeRoll::sendHint(const juce::String& s)
 {
     if (onHint)
@@ -146,7 +152,8 @@ juce::String TakeRoll::hintAt(juce::Point<int> p) const
     const int i = take::noteAt(t, xToTime(p.x), lane);
     if (i < 0)
     {
-        const char* verb = mode == Mode::move ? "Move" : mode == Mode::reset ? "Reset" : "Erase";
+        const char* verb = mode == Mode::move ? "Move" : mode == Mode::reset ? "Reset"
+                         : mode == Mode::erase ? "Erase" : "Drift";
         return noteName(juce::jlimit(0, 127, lane)) + ". Empty lane. Nothing to do here in " + verb + " mode.";
     }
     const auto& n = t.notes[(size_t) i];
@@ -159,6 +166,7 @@ juce::String TakeRoll::hintAt(juce::Point<int> p) const
         case Mode::move: s += "Drag up or down to move it."; break;
         case Mode::reset: s += "Click to put it back to " + noteName(n.detectedNote) + "."; break;
         case Mode::erase: s += "Click to delete it."; break;
+        case Mode::drift: s += driftHint(n.drift); break;
     }
     return s;
 }
@@ -205,6 +213,14 @@ void TakeRoll::mouseDown(const juce::MouseEvent& e)
         case Mode::erase:
             processor.editTake([i](take::Take& tk) { take::deleteNote(tk, i); });
             break;
+        case Mode::drift:
+            dragIndex = i;
+            dragStartX = e.x;
+            dragStartDrift = dragDrift = t.notes[(size_t) i].drift;
+            dragVersion = processor.getTakeVersion();
+            sendHint(driftHint(dragDrift));
+            repaint();
+            break;
     }
 }
 
@@ -212,6 +228,17 @@ void TakeRoll::mouseDrag(const juce::MouseEvent& e)
 {
     if (dragIndex < 0)
         return;
+    if (mode == Mode::drift)
+    {
+        const float d = std::round(juce::jlimit(0.0f, 1.0f, dragStartDrift + (float) (e.x - dragStartX) / (float) driftDragPx) * 100.0f) / 100.0f;
+        if (d != dragDrift)
+        {
+            dragDrift = d;
+            sendHint(driftHint(d));
+            repaint();
+        }
+        return;
+    }
     // Only about nine lanes fit, so holding the drag near the top or bottom edge scrolls
     // pitch: a note can travel an octave or more in one drag with no wheel needed.
     const int edge = laneH / 2;
@@ -236,6 +263,22 @@ void TakeRoll::mouseUp(const juce::MouseEvent& e)
     if (dragIndex < 0)
         return;
     const int i = dragIndex, lane = dragLane;
+    if (mode == Mode::drift)
+    {
+        const float d = dragDrift;
+        const bool driftChanged = d != dragStartDrift && dragVersion == processor.getTakeVersion()
+                                  && i < (int) processor.getTake().notes.size();
+        dragIndex = -1;
+        if (driftChanged)
+            processor.editTake([i, d](take::Take& tk)
+            {
+                if (i < (int) tk.notes.size())
+                    tk.notes[(size_t) i].drift = d;
+            });
+        repaint();
+        sendHint(hintAt(e.getPosition()));
+        return;
+    }
     const bool changed = lane != dragOriginLane && dragVersion == processor.getTakeVersion()
                          && i < (int) processor.getTake().notes.size();
     dragIndex = -1;
@@ -359,11 +402,15 @@ void TakeRoll::paint(juce::Graphics& g)
 
         auto targetOf = [this, &t](int i)
         {
-            return i == dragIndex ? dragLane : t.notes[(size_t) i].targetNote;
+            return i == dragIndex && mode != Mode::drift ? dragLane : t.notes[(size_t) i].targetNote;
+        };
+        auto driftOf = [this, &t](int i)
+        {
+            return i == dragIndex && mode == Mode::drift ? dragDrift : t.notes[(size_t) i].drift;
         };
 
         // The origin of a dragged blob stays as a faint ghost.
-        if (dragIndex >= 0 && dragIndex < (int) t.notes.size() && dragLane != dragOriginLane)
+        if (dragIndex >= 0 && mode != Mode::drift && dragIndex < (int) t.notes.size() && dragLane != dragOriginLane)
         {
             const auto& n = t.notes[(size_t) dragIndex];
             const float x1 = timeToX(n.start), x2 = juce::jmax(x1 + 4.0f, timeToX(n.end));
@@ -384,6 +431,13 @@ void TakeRoll::paint(juce::Graphics& g)
             {
                 g.setColour(th::warn);
                 g.drawRoundedRectangle(r.reduced(1.0f), 5.0f, 2.0f);
+            }
+            if (driftOf(i) < 1.0f && r.getWidth() >= 72.0f)
+            {
+                g.setColour(th::background);
+                g.setFont(juce::Font(juce::FontOptions(11.0f, juce::Font::bold)));
+                g.drawText("Drift " + juce::String(juce::roundToInt(driftOf(i) * 100.0f)) + "%",
+                           r.reduced(5.0f, 1.0f), juce::Justification::topLeft);
             }
         }
 
@@ -409,8 +463,16 @@ void TakeRoll::paint(juce::Graphics& g)
                     prevVoiced = false;
                     continue;
                 }
-                const double shift = in ? (double) (targetOf((int) j) - t.notes[j].detectedNote) : 0.0;
-                const float x = timeToX(it->seconds), y = midiToY((double) it->midi + shift);
+                // Inside a note, the curve is drawn as it will sound: the renderer's own shift.
+                double shown = (double) it->midi;
+                if (in)
+                {
+                    auto n = t.notes[j];
+                    n.targetNote = targetOf((int) j);
+                    n.drift = driftOf((int) j);
+                    shown += (double) take::VoiceRenderer::shiftAt(n, it->midi);
+                }
+                const float x = timeToX(it->seconds), y = midiToY(shown);
                 auto& path = in ? inPath : outPath;
                 if (prevVoiced && prevIn == in && it->seconds - prevSec < 0.1)
                     path.lineTo(x, y);
@@ -526,7 +588,7 @@ void DragMidiTile::mouseUp(const juce::MouseEvent&)
 
 TakeView::TakeView(MurmurProcessor& p)
     : processor(p), roll(p),
-      modeToggle({ "Move", "Reset", "Erase" }, 15.0f,
+      modeToggle({ "Move", "Reset", "Erase", "Drift" }, 15.0f,
                  [this](int i) { roll.setMode(static_cast<TakeRoll::Mode>(i)); })
 {
     okstudio::ui::makeMouseOnly(*this);
@@ -695,6 +757,11 @@ void TakeView::refreshControls()
         s = "Analysing...";
     else if (notice.isNotEmpty())
         s = notice;
+    else if (processor.isRenderingVoice())
+        s = "Rendering voice...";
+    else if (! processor.hasTakeAudio() && ! t.notes.empty())
+        s = (processor.getTakeError().isNotEmpty() ? processor.getTakeError() + ". " : juce::String())
+            + "No take audio: MIDI only";
     else if (processor.getTakeError().isNotEmpty())
         s = processor.getTakeError();
     else
@@ -763,7 +830,7 @@ void TakeView::resized()
 
     area.removeFromTop(8);
     row = area.removeFromTop(hitH);
-    modeToggle.setBounds(row.removeFromLeft(juce::jmin(300, row.getWidth() / 2)));
+    modeToggle.setBounds(row.removeFromLeft(juce::jmin(380, row.getWidth() / 2)));
     row.removeFromLeft(16);
     for (auto* b : { &zoomOutButton, &zoomInButton })
     {

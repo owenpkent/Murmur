@@ -451,6 +451,11 @@ public:
                 args({ { "op", "reset" }, { "index", 9 } }),
                 args({ { "op", "delete" } }),
                 args({ { "op", "delete" }, { "index", 3 } }),
+                args({ { "op", "drift" }, { "index", 0 } }),                // no drift
+                args({ { "op", "drift" }, { "index", 0 }, { "drift", 1.5 } }), // out of range, not clamped
+                args({ { "op", "drift" }, { "index", 0 }, { "drift", -0.1 } }),
+                args({ { "op", "drift" }, { "index", 0 }, { "drift", "half" } }),
+                args({ { "op", "drift" }, { "drift", 0.5 } }),              // no index
             };
             int i = 0;
             for (const auto& a : bad)
@@ -467,6 +472,28 @@ public:
             expect(err.isNotEmpty(), "undo with an empty history should fail");
             call(fresh.processor, "edit_take", args({ { "op", "shift" }, { "index", 0 }, { "steps", 1 } }), err);
             expect(err.isNotEmpty(), "shift on an empty take should fail");
+        }
+
+        beginTest("edit_take drift sets the note's drift, get_take reports it and the audio state");
+        {
+            Host h;
+            h.installTake();
+            juce::String err;
+            auto r = call(h.processor, "edit_take", args({ { "op", "drift" }, { "index", 1 }, { "drift", 0.25 } }), err);
+            expect(err.isEmpty(), err);
+            expectWithinAbsoluteError((double) r["drift"], 0.25, 1e-6);
+            expectWithinAbsoluteError((double) h.processor.getTake().notes[1].drift, 0.25, 1e-6);
+            expectWithinAbsoluteError((double) h.processor.getTake().notes[0].drift, 1.0, 1e-6);
+
+            const auto t = call(h.processor, "get_take", args({}));
+            expectWithinAbsoluteError((double) (*t["notes"].getArray())[1]["drift"], 0.25, 1e-6);
+            expect(! (bool) t["hasAudio"], "an installed take has no audio");
+            expect(! (bool) t["renderingVoice"], "so nothing renders");
+
+            r = call(h.processor, "edit_take", args({ { "op", "reset" }, { "index", 1 } }), err);
+            expectWithinAbsoluteError((double) r["drift"], 1.0, 1e-6);
+            h.processor.undoTake();
+            expectWithinAbsoluteError((double) h.processor.getTake().notes[1].drift, 0.25, 1e-6);
         }
 
         beginTest("take_transport play and stop, with errors");

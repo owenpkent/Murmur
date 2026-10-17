@@ -4,6 +4,8 @@
 #include "take/TakeCapture.h"
 #include "take/TakeModel.h"
 #include "take/TakePlayer.h"
+#include "take/VoicePlayer.h"
+#include "take/VoiceRenderer.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 #include <atomic>
@@ -87,10 +89,21 @@ public:
     bool undoTake();
     bool canUndoTake() const { return takeHistory.canUndo(); }
     bool isAnalysingTake() const { return jobsRunning.load() > 0; }
+    // Phase B: the take's original audio is held (false after a WAV that is missing), and the
+    // corrected voice is being re-rendered in the background after an edit.
+    bool hasTakeAudio() const { return takeAudio != nullptr; }
+    bool isRenderingVoice() const { return renderBusy.load(); }
+    // Blocks until no analysis or render is running or wanted, installing results as they land.
+    // For tests and MCP. False on timeout.
+    bool waitForTakeJobs(int timeoutMs);
+    // The corrected voice as last installed (the original audio when no note needs rendering);
+    // null without take audio. Message thread.
+    std::shared_ptr<const std::vector<float>> getCorrectedAudio() const { return correctedAudio; }
     void clearTake(); // history cleared too; the WAV stays on disk
 
     // ---- Take Editor playback. Message thread. The take's notes replace the live MIDI while
-    // playing; the engine still hears the voice so the level bar works. Free play runs the
+    // playing, and the corrected take replaces the voice (the audio is untouched otherwise); the
+    // engine still hears the live voice so the level bar works. Free play runs the
     // take's own clock; an anchored take also follows a playing host on its own. ----
     void playTake(double fromSeconds = 0.0); // no-op with no notes or while recording
     void stopTake();
@@ -129,11 +142,20 @@ private:
         bool curveOnly = false; // a restore: only `take.curve` is wanted
         take::Take take;
         juce::String error;
+        std::shared_ptr<const std::vector<float>> audio; // the take's original mono audio, if known
+    };
+    struct RenderResult
+    {
+        int generation = 0;
+        std::shared_ptr<const std::vector<float>> corrected;
+        std::vector<take::VoiceRenderer::RenderedNote> snapshot; // the notes `corrected` reflects
     };
 
     AnalysisSetup makeAnalysisSetup() const;
     void startJob(std::function<PendingResult()> work);
-    void bumpTakeVersion(); // also republishes the playback snapshot
+    void bumpTakeVersion(); // also republishes the playback snapshot and schedules a voice render
+    void scheduleVoiceRender();
+    void resetVoice(); // no corrected audio any more; the voice is silent until a render lands
     void handleAsyncUpdate() override;
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout(bool hostLayout);
@@ -154,9 +176,18 @@ private:
     // touch their own copies plus `pending` (under pendingLock); ~MurmurProcessor stops them.
     take::TakeCapture capture;
     take::TakePlayer player;
+    take::VoicePlayer voice;
     juce::MidiBuffer playbackMidi; // audio thread scratch, sized in prepareToPlay
     std::array<bool, 128> engineHeld {}; // engine notes sounding, so a takeover can release them
     take::Take take;
+    // Phase B, message thread: the original audio, the corrected copy the audio thread plays
+    // (through `voice`) and the notes it was rendered from. One render job at a time; edits
+    // that land meanwhile just set `renderDirty`, and one more render follows with the latest.
+    std::shared_ptr<const std::vector<float>> takeAudio, correctedAudio;
+    std::vector<take::VoiceRenderer::RenderedNote> renderedSnapshot;
+    bool renderDirty = false;
+    std::atomic<bool> renderBusy { false };
+    std::atomic<int> renderJobsRunning { 0 };
     take::TakeHistory takeHistory;
     juce::String takeError;
     juce::File takesFolder;
@@ -165,6 +196,7 @@ private:
     std::atomic<int> jobsRunning { 0 };
     juce::CriticalSection pendingLock;
     std::optional<PendingResult> pending;
+    std::optional<RenderResult> pendingRender;
     juce::ThreadPool takePool { 1 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MurmurProcessor)

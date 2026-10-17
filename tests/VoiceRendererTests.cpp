@@ -58,14 +58,19 @@ namespace
     {
         murmur::dsp::PitchTracker pt;
         pt.prepare(kRate, 512);
-        pt.process(v.data(), (int) v.size());
         std::vector<double> hz;
         murmur::dsp::PitchFrame fr;
-        while (pt.pop(fr))
+        // Fed in blocks and drained after each: the tracker's frame queue is bounded, so one
+        // big process() call would leave only the tail of a long buffer to measure.
+        for (int pos = 0; pos < (int) v.size(); pos += 512)
         {
-            const double t = (double) fr.samplePos / kRate;
-            if (t >= fromSec && t <= toSec && fr.f0Hz > 0.0 && fr.clarity > 0.8f)
-                hz.push_back(fr.f0Hz);
+            pt.process(v.data() + pos, std::min(512, (int) v.size() - pos));
+            while (pt.pop(fr))
+            {
+                const double t = (double) fr.samplePos / kRate;
+                if (t >= fromSec && t <= toSec && fr.f0Hz > 0.0 && fr.clarity > 0.8f)
+                    hz.push_back(fr.f0Hz);
+            }
         }
         if (hz.empty())
             return 0.0;

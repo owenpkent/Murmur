@@ -1,6 +1,6 @@
 # Take Editor: design
 
-**Status: Phase A done (2026-10-17): all six steps (model, capture and analysis, editor UI, MIDI playback, Drag MIDI, MCP tools). Phase B designed, not started.**
+**Status: Phase A done (2026-10-17): all six steps (model, capture and analysis, editor UI, MIDI playback, Drag MIDI, MCP tools). Phase B done (2026-10-17): the offline renderer, the render jobs and the playback voice, and Drift.**
 
 ## What it is
 
@@ -143,11 +143,18 @@ Lanes are `minHitPx` tall. On Stop, the view opens fitted to the take's pitch ra
   dependency, signalsmith-linear 0.6.4 (commit de55e6a), both MIT, header-only, with linear's
   built-in FFT (no IPP, PFFFT or Accelerate on Windows).
 - **Playback output** is the corrected take instead of the live input. In Murmur Host it becomes
-  the "dry" side of Mix, so Mix still crossfades voice and instrument.
+  the "dry" side of Mix, so Mix still crossfades voice and instrument. Built as: the processor
+  holds the original audio, re-renders on every note change (changed notes plus the closure of
+  overlapping neighbours, coalesced to one job at a time), and `VoicePlayer` reads the corrected
+  buffer at take position minus latency, ramped over 5 ms. The Standalone plays it too (it is
+  not the mic). A missing WAV means MIDI only. Murmur Host takes the dry block after
+  `MurmurProcessor::processBlock`, so the Standalone silence and the voice swap come for free.
 - **Invariant change, on purpose:** "audio passes through untouched" becomes "audio passes
   through untouched unless a take is playing". `ARCHITECTURE.md` and `CLAUDE.md` are updated
   in the same change.
-- **Drift mode:** drag a blob left or right to set its drift from 0 to 100%.
+- **Drift mode:** drag a blob left or right to set its drift from 0 to 100% (160 px is the
+  range, one undo step per drag). The curve is drawn as it will sound. MCP: `edit_take` `op:
+  "drift"`.
 
 ## Build order
 

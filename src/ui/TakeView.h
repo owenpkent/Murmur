@@ -16,7 +16,7 @@ namespace murmur::ui
 class TakeRoll : public juce::Component
 {
 public:
-    enum class Mode { move, reset, erase };
+    enum class Mode { move, reset, erase, drift };
 
     explicit TakeRoll(MurmurProcessor&);
 
@@ -56,6 +56,8 @@ private:
     void clampView();
     int snapLane(int lane) const;
     juce::String hintAt(juce::Point<int>) const;
+    static juce::String driftHint(float drift);
+    static inline const juce::String driftHelp = "drag left to flatten, right to keep the wobble.";
     void sendHint(const juce::String&);
 
     MurmurProcessor& processor;
@@ -68,6 +70,10 @@ private:
     // pick time (a take that changed under the drag is not edited).
     bool pendingFit = false; // a fit asked for while the roll had no size yet
     int dragIndex = -1, dragLane = 0, dragOriginLane = 0, dragVersion = 0;
+    // Drift mode: a horizontal drag. Dragging driftDragPx to the right is the whole 0..1 range.
+    float dragDrift = 1.0f, dragStartDrift = 1.0f;
+    int dragStartX = 0;
+    static constexpr int driftDragPx = 160;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TakeRoll)
 };

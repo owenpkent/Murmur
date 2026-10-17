@@ -90,6 +90,10 @@ public:
     bool isPlaying() const noexcept { return (state.load() & 1u) != 0 || following.load(); }
     double playheadSeconds() const noexcept { return playhead.load(); }
 
+    // Audio thread, right after render() returned true: the take position, in samples, of that
+    // block's first sample (the voice reads the corrected take from here).
+    juce::int64 blockStart() const noexcept { return blockPos; }
+
     // Audio thread. Adds this block's events to `out`. Returns true when the take is playing
     // this block, so the caller should use `out` instead of the live MIDI. Note-offs sent while
     // a play ends are in `out` either way.
@@ -178,6 +182,7 @@ private:
             return false;
         }
 
+        blockPos = pos;
         const bool jumped = mode == Mode::follow && std::llabs(pos - expectedPos) > (juce::int64) numSamples;
         if (mode != lastMode || s->id != seenId || reset || jumped)
             silence(out);
@@ -249,7 +254,7 @@ private:
     // Audio thread only.
     unsigned seenSerial = 0;
     int seenId = 0;
-    juce::int64 freePos = 0, expectedPos = 0;
+    juce::int64 freePos = 0, expectedPos = 0, blockPos = 0;
     Mode lastMode = Mode::idle;
     std::array<int, 128> sounding {};
     int soundingTotal = 0;

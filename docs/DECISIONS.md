@@ -15,6 +15,18 @@ on the way out in the Standalone only (Murmur Host still plays its instrument) a
 input from the editor through `StandalonePluginHolder` (`src/StandaloneSupport.*`), over
 clicking Settings to unmute by hand. The VST3 still passes audio through untouched.
 
+**The edited voice is audible, and a playing take replaces the live voice (2026-10-17).** Phase B
+part 2. Decisions beyond the design: one render job at a time with a dirty flag (an edit during
+a render folds into one more render, not a queue); an incremental render re-renders the closure
+of overlapping padded regions from the original so it equals a full render exactly; the voice
+fades over 5 ms and cross-fades with whatever is in the block, so the Standalone (silent dry)
+and Murmur Host (Mix dry side) need no special case; Murmur Host copies its dry block after
+`MurmurProcessor::processBlock` instead of before, which drops its own Standalone branch; the
+voice is timed with the engine's latency like the MIDI (the Host's dry ring adds the
+instrument's). The corrected take plays in the Standalone: it is a recording, so it cannot
+feed back. Audio that no longer matches the sample rate plays no voice rather than at the wrong
+pitch.
+
 **A Melodyne-style take editor, MIDI first, voice second (2026-10-17).** Owen asked for
 "something like melodyne where you can shift pitch. maybe related to lattice". Of four options
 (edit the MIDI only, re-pitch the voice, the first then the second, live auto-tune) he chose to

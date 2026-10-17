@@ -69,17 +69,14 @@ void MurmurHostProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
                          && hostBuffer.getNumChannels() > 0 && numSamples <= dryBlock.getNumSamples()
                          && dryDelay.getNumSamples() > 1 && numCh <= 2;
 
-    if (canHost) // keep the voice: Murmur only reads it, but the crossfade needs it afterwards
-        for (int ch = 0; ch < numCh; ++ch)
-        {
-            if (wrapperType == wrapperType_Standalone)
-                dryBlock.clear(ch, 0, numSamples); // no voice out in the Standalone: StandaloneSupport.h
-            else
-                dryBlock.copyFrom(ch, 0, buffer, ch, 0, numSamples);
-        }
-
-    // Murmur: voice in, engine MIDI out, audio untouched.
+    // Murmur: voice in, engine MIDI out. Murmur leaves the audio alone, except that a playing
+    // take swaps in its corrected voice, and the Standalone silences the live one
+    // (StandaloneSupport.h). What is in the buffer afterwards is the dry side of the Mix.
     MurmurProcessor::processBlock(buffer, midi);
+
+    if (canHost) // keep it: the crossfade below overwrites the buffer
+        for (int ch = 0; ch < numCh; ++ch)
+            dryBlock.copyFrom(ch, 0, buffer, ch, 0, numSamples);
 
     const float mixTarget = apvts.getRawParameterValue("mix")->load();
     if (! canHost)

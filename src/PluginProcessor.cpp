@@ -121,8 +121,9 @@ void MurmurProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     juce::ScopedNoDenormals noDenormals;
     midi.clear(); // we author the whole outgoing MIDI stream from the voice.
 
-    // Audio is passed through untouched: we only read the buffer. The one exception is the
-    // Standalone app, where the voice is silenced at the end (see StandaloneSupport.h).
+    // Audio is passed through untouched: we only read the buffer. The exceptions are a playing
+    // take, whose corrected voice replaces it, and the Standalone app, where the live voice is
+    // silenced at the end (see StandaloneSupport.h).
     const int numSamples = buffer.getNumSamples();
     const int numCh = buffer.getNumChannels();
 
@@ -197,10 +198,15 @@ void MurmurProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     if (! playbackMidi.isEmpty())
         midi.addEvents(playbackMidi, 0, numSamples, 0);
 
-    // Standalone only: a mic and speakers on one machine would feed back, so the voice is not
-    // played out. Murmur Host still adds its instrument on top of this silence.
+    // Standalone only: a mic and speakers on one machine would feed back, so the live voice is
+    // not played out. Murmur Host still adds its instrument on top of this silence.
     if (wrapperType == wrapperType_Standalone)
         buffer.clear();
+
+    // A playing take's voice is the corrected recording, not the mic, so it cannot feed back and
+    // is allowed out of the Standalone too. It fades in and out over a few ms; with no take
+    // playing and the fade done, the block is not touched. It is timed like the MIDI.
+    voice.process(buffer, tookOver, player.blockStart(), engine.getLatencySamples(), getSampleRate());
 
     const int latency = engine.getLatencySamples();
     if (latency != lastLatency)
@@ -320,6 +326,7 @@ void MurmurProcessor::stopRecording()
             r.take.audioPath = file.getFullPathName();
         else
             r.error = "Could not save take audio to " + file.getFullPathName();
+        r.audio = std::make_shared<const std::vector<float>>(std::move(rec->audio)); // kept for the voice
         return r;
     });
 }
@@ -343,10 +350,93 @@ bool MurmurProcessor::waitForTakeAnalysis(int timeoutMs)
     return jobsRunning.load() == 0;
 }
 
+bool MurmurProcessor::waitForTakeJobs(int timeoutMs)
+{
+    const auto deadline = juce::Time::getMillisecondCounter() + (juce::uint32) std::max(timeoutMs, 0);
+    for (;;)
+    {
+        while ((jobsRunning.load() > 0 || renderJobsRunning.load() > 0)
+               && juce::Time::getMillisecondCounter() < deadline)
+            juce::Thread::sleep(2);
+        handleUpdateNowIfNeeded(); // a result can start the next render
+        if (jobsRunning.load() == 0 && renderJobsRunning.load() == 0 && ! renderBusy.load())
+            return true;
+        if (juce::Time::getMillisecondCounter() >= deadline)
+            return false;
+    }
+}
+
 void MurmurProcessor::bumpTakeVersion()
 {
     takeVersion.fetch_add(1);
     player.publish(take, getSampleRate());
+    scheduleVoiceRender();
+}
+
+void MurmurProcessor::resetVoice()
+{
+    correctedAudio.reset();
+    renderedSnapshot.clear();
+    voice.publish(nullptr, 0.0);
+}
+
+// Brings the corrected voice up to date with the take's notes. Only the notes that changed are
+// re-rendered, on the pool; edits that arrive while a render runs are folded into one more.
+void MurmurProcessor::scheduleVoiceRender()
+{
+    if (takeAudio == nullptr)
+    {
+        renderDirty = false;
+        if (correctedAudio != nullptr)
+            resetVoice();
+        return;
+    }
+    if (renderBusy.load())
+    {
+        renderDirty = true;
+        return;
+    }
+
+    const double rate = take.sampleRate;
+    const bool haveBase = correctedAudio != nullptr;
+    if (haveBase && take::VoiceRenderer::changedNotes(renderedSnapshot, take).empty()
+        && take::VoiceRenderer::removedRegions(renderedSnapshot, take).empty())
+        return; // nothing about the notes changed (a curve-only update, say)
+    if (! haveBase && std::none_of(take.notes.begin(), take.notes.end(), take::VoiceRenderer::needsRender))
+    {
+        // A take exactly as sung needs no render: the original is the voice.
+        correctedAudio = takeAudio;
+        renderedSnapshot = take::VoiceRenderer::snapshot(take);
+        voice.publish(correctedAudio, rate);
+        return;
+    }
+
+    renderDirty = false;
+    renderBusy.store(true);
+    renderJobsRunning.fetch_add(1);
+    takePool.addJob([this, generation = takeGeneration.load(), original = takeAudio, prev = correctedAudio,
+                     prevSnapshot = renderedSnapshot, t = take, rate]
+    {
+        RenderResult r;
+        r.generation = generation;
+        r.snapshot = take::VoiceRenderer::snapshot(t);
+        if (prev == nullptr)
+        {
+            r.corrected = std::make_shared<const std::vector<float>>(take::VoiceRenderer::renderAll(*original, t, rate));
+        }
+        else
+        {
+            auto copy = std::make_shared<std::vector<float>>(*prev);
+            take::VoiceRenderer::renderChanged(*original, *copy, prevSnapshot, t, rate);
+            r.corrected = std::move(copy);
+        }
+        {
+            const juce::ScopedLock sl(pendingLock);
+            pendingRender = std::move(r);
+        }
+        triggerAsyncUpdate();
+        renderJobsRunning.fetch_sub(1); // last: after this the destructor may proceed
+    });
 }
 
 void MurmurProcessor::playTake(double fromSeconds)
@@ -366,28 +456,56 @@ void MurmurProcessor::stopTake()
 void MurmurProcessor::handleAsyncUpdate()
 {
     std::optional<PendingResult> r;
+    std::optional<RenderResult> rendered;
     {
         const juce::ScopedLock sl(pendingLock);
         r = std::move(pending);
         pending.reset();
+        rendered = std::move(pendingRender);
+        pendingRender.reset();
     }
-    if (! r.has_value() || r->generation != takeGeneration.load())
-        return; // superseded by a newer record, clear or restore
 
-    if (r->curveOnly)
+    // An analysis from an older generation was superseded by a newer record, clear or restore.
+    if (r.has_value() && r->generation == takeGeneration.load())
     {
-        if (r->take.audioPath == take.audioPath)
-            take.curve = std::move(r->take.curve);
-        if (r->error.isNotEmpty())
+        if (r->curveOnly)
+        {
+            if (r->take.audioPath == take.audioPath)
+            {
+                take.curve = std::move(r->take.curve);
+                if (r->audio != nullptr)
+                {
+                    takeAudio = std::move(r->audio);
+                    resetVoice(); // any corrected copy was of other audio
+                }
+            }
+            if (r->error.isNotEmpty())
+                takeError = r->error;
+        }
+        else
+        {
+            take = std::move(r->take);
+            takeHistory.clear();
             takeError = r->error;
+            takeAudio = std::move(r->audio);
+            resetVoice();
+        }
+        bumpTakeVersion();
     }
-    else
+
+    if (rendered.has_value())
     {
-        take = std::move(r->take);
-        takeHistory.clear();
-        takeError = r->error;
+        renderBusy.store(false);
+        if (rendered->generation == takeGeneration.load() && takeAudio != nullptr)
+        {
+            correctedAudio = std::move(rendered->corrected);
+            renderedSnapshot = std::move(rendered->snapshot);
+            voice.publish(correctedAudio, take.sampleRate);
+            takeVersion.fetch_add(1); // the editor shows the status
+        }
+        if (renderDirty)
+            scheduleVoiceRender(); // the take changed while it rendered: once more, with the latest
     }
-    bumpTakeVersion();
 }
 
 void MurmurProcessor::editTake(const std::function<void(take::Take&)>& edit)
@@ -411,6 +529,9 @@ void MurmurProcessor::clearTake()
     take = {};
     takeHistory.clear();
     takeError.clear();
+    takeAudio.reset();
+    renderDirty = false;
+    resetVoice();
     bumpTakeVersion();
 }
 
@@ -425,6 +546,8 @@ void MurmurProcessor::restoreTake(const juce::ValueTree& root)
     take = take::fromValueTree(root.getChildWithName("MURMUR_TAKE"));
     takeHistory.clear();
     takeError.clear();
+    takeAudio.reset(); // until the WAV is read; MIDI playback works without it
+    resetVoice();
     bumpTakeVersion();
     if (take.audioPath.isEmpty())
         return;
@@ -457,6 +580,8 @@ void MurmurProcessor::restoreTake(const juce::ValueTree& root)
         r.take = take::analyse(buf.getReadPointer(0), buf.getNumSamples(), reader->sampleRate,
                                setup.params, setup.onsetSensitivity);
         r.take.audioPath = path;
+        r.audio = std::make_shared<const std::vector<float>>(buf.getReadPointer(0),
+                                                             buf.getReadPointer(0) + buf.getNumSamples());
         return r;
     });
 }

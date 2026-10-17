@@ -110,6 +110,7 @@ namespace
         o->setProperty("targetNote", n.targetNote);
         o->setProperty("targetName", noteName(n.targetNote));
         o->setProperty("velocity", (double) n.velocity);
+        o->setProperty("drift", (double) n.drift);
         return juce::var(o);
     }
 
@@ -387,7 +388,10 @@ okstudio::mcp::Tool MurmurMcp::toolGetTake()
                      "the host played, else null for a free take) and `notes`: for each note its "
                      "`index`, `start` and `end` (seconds from the take start), `sungMidi` (what "
                      "was sung, fractional), `detectedNote`, `targetNote` (what it plays as, the "
-                     "only thing edit_take changes), `velocity` (0..1), plus the note names. "
+                     "only thing edit_take changes), `velocity` (0..1), `drift` (1 keeps the "
+                     "sung wobble, 0 flattens it to the note), plus the note names. Also "
+                     "`hasAudio` (false when the take's WAV is missing: MIDI plays, the voice "
+                     "does not) and `renderingVoice` (the corrected voice is being re-rendered). "
                      "Use the `index` with edit_take.";
     t.run = [this](const juce::var&, juce::String&) -> juce::var
     {
@@ -399,6 +403,8 @@ okstudio::mcp::Tool MurmurMcp::toolGetTake()
             o->setProperty(k, state[k]);
         const auto err = processor.getTakeError();
         o->setProperty("error", err.isEmpty() ? juce::var() : juce::var(err));
+        o->setProperty("hasAudio", processor.hasTakeAudio());
+        o->setProperty("renderingVoice", processor.isRenderingVoice());
         if (take.anchorPpq.has_value())
         {
             auto* a = new juce::DynamicObject();
@@ -427,24 +433,28 @@ okstudio::mcp::Tool MurmurMcp::toolEditTake()
                      "step. `op` is one of: shift (move note `index` by `steps` semitones, or by "
                      "scale degrees while the scaleLock control is on, as dragging on the roll "
                      "does), set (play note `index` as MIDI note `note`, 0..127), reset (back to "
-                     "the detected note), delete (remove note `index`), snap_to_scale (every note "
-                     "to the Root and Scale controls) and undo (the last edit). An unknown op, a "
-                     "missing or out-of-range index, a missing `steps`, an out-of-range `note`, "
-                     "or editing while recording or analysing is an error and changes nothing. "
-                     "Returns the updated note (shift, set, reset), or the remaining noteCount "
-                     "(delete, snap_to_scale, undo).";
-    t.params = { { "op", "string", "shift, set, reset, delete, snap_to_scale or undo.", true },
-                 { "index", "integer", "Note index from get_take (shift, set, reset, delete).", false },
+                     "the detected note, drift back to 1), drift (set note `index`'s `drift`, 0..1: "
+                     "1 keeps the sung wobble, 0 pins the note to its centre), delete (remove "
+                     "note `index`), snap_to_scale (every note to the Root and Scale controls) "
+                     "and undo (the last edit). An unknown op, a missing or out-of-range index, "
+                     "a missing `steps`, an out-of-range `note`, a missing or out-of-range "
+                     "`drift`, or editing while recording or analysing is an error and changes "
+                     "nothing. Returns the updated note (shift, set, reset, drift), or the "
+                     "remaining noteCount (delete, snap_to_scale, undo). Edits re-render the "
+                     "voice in the background (get_take `renderingVoice`).";
+    t.params = { { "op", "string", "shift, set, reset, drift, delete, snap_to_scale or undo.", true },
+                 { "index", "integer", "Note index from get_take (shift, set, reset, drift, delete).", false },
                  { "steps", "integer", "Semitones, or scale degrees with scaleLock on; negative is down (shift).", false },
-                 { "note", "integer", "MIDI note number 0..127 (set).", false } };
+                 { "note", "integer", "MIDI note number 0..127 (set).", false },
+                 { "drift", "number", "0..1: 1 keeps the sung wobble, 0 flattens it (drift).", false } };
     t.run = [this](const juce::var& args, juce::String& error) -> juce::var
     {
         const auto opVar = args.getProperty("op", juce::var());
         const auto op = opVar.isString() ? opVar.toString() : juce::String();
-        const bool needsIndex = op == "shift" || op == "set" || op == "reset" || op == "delete";
+        const bool needsIndex = op == "shift" || op == "set" || op == "reset" || op == "drift" || op == "delete";
         if (! needsIndex && op != "snap_to_scale" && op != "undo")
         {
-            error = "op must be one of shift, set, reset, delete, snap_to_scale, undo";
+            error = "op must be one of shift, set, reset, drift, delete, snap_to_scale, undo";
             return {};
         }
         if (processor.getCapture().isRecording() || processor.isAnalysingTake())
@@ -456,6 +466,7 @@ okstudio::mcp::Tool MurmurMcp::toolEditTake()
         // Validate every argument before anything changes.
         const int count = (int) processor.getTake().notes.size();
         int index = 0, steps = 0, note = 0;
+        double drift = 1.0;
         if (needsIndex && ! readInt(args, "index", 0, count - 1, index, error))
         {
             error += " (the take has " + juce::String(count) + (count == 1 ? " note)" : " notes)");
@@ -465,6 +476,16 @@ okstudio::mcp::Tool MurmurMcp::toolEditTake()
             return {};
         if (op == "set" && ! readInt(args, "note", 0, 127, note, error))
             return {};
+        if (op == "drift")
+        {
+            const auto v = args.getProperty("drift", juce::var());
+            if (! (v.isInt() || v.isInt64() || v.isDouble()) || ! ((double) v >= 0.0 && (double) v <= 1.0))
+            {
+                error = "drift must be a number from 0 to 1";
+                return {};
+            }
+            drift = (double) v;
+        }
         if (op == "undo" && ! processor.canUndoTake())
         {
             error = "nothing to undo";
@@ -481,6 +502,8 @@ okstudio::mcp::Tool MurmurMcp::toolEditTake()
             processor.editTake([=](take::Take& tk) { tk.notes[(size_t) index].targetNote = note; });
         else if (op == "reset")
             processor.editTake([=](take::Take& tk) { take::resetNote(tk, index); });
+        else if (op == "drift")
+            processor.editTake([=](take::Take& tk) { tk.notes[(size_t) index].drift = (float) drift; });
         else if (op == "delete")
             processor.editTake([=](take::Take& tk) { take::deleteNote(tk, index); });
         else if (op == "snap_to_scale")
