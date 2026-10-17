@@ -1,6 +1,6 @@
 # Take Editor: design
 
-**Status: Phase A in progress (2026-10-17): steps 1 to 4 done (model, capture and analysis, editor UI, MIDI playback). Later steps to do. Phase B designed, not started.**
+**Status: Phase A done (2026-10-17): all six steps (model, capture and analysis, editor UI, MIDI playback, Drag MIDI, MCP tools). Phase B designed, not started.**
 
 ## What it is
 
@@ -152,7 +152,8 @@ Phase A, each step testable on its own:
 3. The roll and the take view (Live | Edit toggle), Move, Reset and Erase, undo.
 4. MIDI playback, free then anchored.
 5. Drag MIDI out.
-6. MCP tools (`get_take`, `shift_note`) so Claude can read and edit a take, and docs.
+6. MCP tools (`get_take`, `edit_take`, `take_transport`) so Claude can read, edit, record and
+   play a take, and docs. (`edit_take` with `op: "shift"` replaced the planned `shift_note`.)
 
 Then Phase B: vendor the library, render, playback output, Drift.
 

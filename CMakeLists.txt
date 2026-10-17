@@ -108,7 +108,7 @@ endif()
 # host classes HostTests.cpp exercises; the only MURMUR_HOST-gated code is createPluginFilter,
 # which no test calls), otherwise plain Murmur and HostTests.cpp is left out.
 enable_testing()
-set(_murmurTestSources tests/DspTests.cpp tests/StateTests.cpp tests/McpTests.cpp tests/TakeTests.cpp tests/TakeCaptureTests.cpp tests/TakePlaybackTests.cpp)
+set(_murmurTestSources tests/DspTests.cpp tests/StateTests.cpp tests/McpTests.cpp tests/TakeTests.cpp tests/TakeCaptureTests.cpp tests/TakePlaybackTests.cpp tests/TakeMidiTests.cpp)
 if (MURMUR_BUILD_HOST)
     set(_murmurTestTarget MurmurHost)
     list(APPEND _murmurTestSources tests/HostTests.cpp)

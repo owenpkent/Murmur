@@ -58,6 +58,7 @@ Design: [TAKE_EDITOR_DESIGN.md](TAKE_EDITOR_DESIGN.md).
 | **Undo** | Click | Undoes the last edit (a drag, Reset, Erase or Snap to scale is one step). Disabled when there is nothing to undo. |
 | **Snap to scale** | Click | Moves every note to the nearest note of the Root and Scale chosen in Live view. |
 | **Clear** | Click, then click again within 3 seconds | The first click turns the button into "Click again to clear"; the second removes the take. |
+| **Drag MIDI** | Left-drag out of the tile | Writes the take (with your edits) as a MIDI file in `<takes folder>/MIDI/` and drags it into Live to drop as a clip: 960 ticks per quarter, at the take's tempo (120 BPM for a free take). No click needed. Disabled with no notes, while recording or analysing. |
 | Status label | Display only | "Analysing...", an error if saving or analysis failed, otherwise "N notes". |
 | **Move / Reset / Erase** | Click a segment | The verb for a click on a note blob. |
 | Note blob, Move mode | Drag up or down | Previews the note in the lane under the pointer (snapping to scale notes while Scale Lock is on, with a faint ghost left in the original lane); release to place it. Hold the drag at the top or bottom edge of the roll and it scrolls, so a note can travel an octave in one drag. One undo step. A note moved off what was heard gets an orange outline. |

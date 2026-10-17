@@ -72,6 +72,31 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TakeRoll)
 };
 
+// The Drag MIDI tile: looks like a button, but a left-drag of more than a few pixels asks
+// `prepareFile` for the .mid on disk and starts a drag-and-drop of it out of the window, into
+// Live. No click is needed (a drag is an allowed mouse-only gesture). Disabled: no drag.
+class DragMidiTile : public juce::Component
+{
+public:
+    DragMidiTile();
+
+    std::function<juce::File()> prepareFile; // writes the file; a non-existent File = nothing to drag
+    std::function<void(const juce::String&)> onHint;
+
+    void paint(juce::Graphics&) override;
+    void mouseEnter(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void enablementChanged() override { repaint(); }
+
+private:
+    bool over = false, pressed = false, started = false;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DragMidiTile)
+};
+
 // The Edit view: transport row, mode and zoom row, the roll, and a hint strip. Drums mode
 // shows a message instead (v1 edits melodies only). Polls the processor at 30 Hz itself.
 class TakeView : public juce::Component, private juce::Timer
@@ -92,9 +117,11 @@ private:
     void onClearClicked();
     void refreshControls();
     void setButtonText(juce::TextButton&, const juce::String&);
+    juce::File writeMidiFile() const;
 
     MurmurProcessor& processor;
     TakeRoll roll;
+    DragMidiTile dragTile;
     juce::TextButton recordButton, playButton, undoButton, snapButton, clearButton;
     juce::TextButton zoomOutButton, zoomInButton, fitButton;
     Segmented modeToggle;

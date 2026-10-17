@@ -12,6 +12,10 @@ layout may still change and break saved sessions (noted loudly when it does).
   Undo, Snap to scale, time zoom and Fit). Melody mode. **Play** runs the take's notes as MIDI
   through the instrument (or out of the track), from a start marker set by clicking the time
   ruler, with a playhead on the roll; an anchored take also follows the host transport. See `docs/CONTROLS.md` and `docs/TAKE_EDITOR_DESIGN.md`.
+- **Drag MIDI** tile in the Take Editor: drag the take (with your pitch edits) out of the
+  window into Live as a MIDI clip. The file is also kept in `<takes folder>/MIDI/`.
+- **MCP take tools**: `get_take`, `edit_take` (shift, set, reset, delete, snap_to_scale, undo)
+  and `take_transport` (record, stop_recording, play, stop). See `docs/MCP.md`.
 - **Murmur Host** (`src/host/`, `MURMUR_BUILD_HOST`, second plugin target `MurmurHost`): an audio
   effect that hosts one instrument VST3 inside itself, plays the engine's MIDI through it and
   outputs the instrument, so voice in and drums or synth out work on one track. New **Mix**

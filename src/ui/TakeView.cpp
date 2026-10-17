@@ -1,4 +1,5 @@
 #include "TakeView.h"
+#include "../take/TakeMidi.h"
 #include <okstudio/Scales.h>
 
 namespace murmur::ui
@@ -456,10 +457,73 @@ void TakeRoll::paint(juce::Graphics& g)
 }
 } // namespace murmur::ui
 
-// ---- TakeView ----------------------------------------------------------------------------
+// ---- DragMidiTile ------------------------------------------------------------------------
 
 namespace murmur::ui
 {
+DragMidiTile::DragMidiTile()
+{
+    okstudio::ui::makeMouseOnly(*this);
+    setTitle("Drag MIDI");
+    setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+}
+
+void DragMidiTile::paint(juce::Graphics& g)
+{
+    const bool on = isEnabled();
+    auto r = getLocalBounds().toFloat().reduced(0.5f);
+    g.setColour(! on ? okstudio::theme::panel
+                     : pressed ? okstudio::theme::surfaceHi
+                               : over ? okstudio::theme::surface : okstudio::theme::panel);
+    g.fillRoundedRectangle(r, 6.0f);
+    g.setColour(on ? okstudio::theme::accent : okstudio::theme::outline);
+    g.drawRoundedRectangle(r, 6.0f, 1.0f);
+    g.setColour(on ? okstudio::theme::text : okstudio::theme::textDim.withAlpha(0.5f));
+    g.setFont(juce::Font(juce::FontOptions(15.0f)));
+    g.drawText("Drag MIDI", getLocalBounds(), juce::Justification::centred);
+}
+
+void DragMidiTile::mouseEnter(const juce::MouseEvent&)
+{
+    over = true;
+    if (onHint)
+        onHint("Drag this into Live to drop the take as a MIDI clip.");
+    repaint();
+}
+
+void DragMidiTile::mouseExit(const juce::MouseEvent&)
+{
+    over = false;
+    if (onHint)
+        onHint({});
+    repaint();
+}
+
+void DragMidiTile::mouseDown(const juce::MouseEvent& e)
+{
+    pressed = isEnabled() && e.mods.isLeftButtonDown();
+    started = false;
+    repaint();
+}
+
+void DragMidiTile::mouseDrag(const juce::MouseEvent& e)
+{
+    if (! pressed || started || e.getDistanceFromDragStart() <= 6 || ! prepareFile)
+        return;
+    started = true;
+    const auto file = prepareFile();
+    if (file.existsAsFile())
+        juce::DragAndDropContainer::performExternalDragDropOfFiles({ file.getFullPathName() }, false, this);
+}
+
+void DragMidiTile::mouseUp(const juce::MouseEvent&)
+{
+    pressed = false;
+    repaint();
+}
+
+// ---- TakeView ----------------------------------------------------------------------------
+
 TakeView::TakeView(MurmurProcessor& p)
     : processor(p), roll(p),
       modeToggle({ "Move", "Reset", "Erase" }, 15.0f,
@@ -504,7 +568,11 @@ TakeView::TakeView(MurmurProcessor& p)
     hint.setText("Scroll to move through time.", juce::dontSendNotification);
     hint.setInterceptsMouseClicks(false, false);
     roll.onHint = [this](const juce::String& s) { hint.setText(s, juce::dontSendNotification); };
+    dragTile.prepareFile = [this] { return writeMidiFile(); };
+    dragTile.onHint = [this](const juce::String& s)
+    { hint.setText(s.isEmpty() ? juce::String("Scroll to move through time.") : s, juce::dontSendNotification); };
 
+    addAndMakeVisible(dragTile);
     addAndMakeVisible(modeToggle);
     addAndMakeVisible(status);
     addAndMakeVisible(hint);
@@ -533,10 +601,30 @@ void TakeView::setDrumsMode(bool d)
         return;
     drums = d;
     for (auto* c : std::initializer_list<juce::Component*> { &recordButton, &playButton, &undoButton, &snapButton,
-                                                            &clearButton, &zoomOutButton, &zoomInButton, &fitButton, &modeToggle,
+                                                            &clearButton, &dragTile, &zoomOutButton, &zoomInButton, &fitButton, &modeToggle,
                                                             &status, &hint, &roll })
         c->setVisible(! d);
     repaint();
+}
+
+// <takes folder>/MIDI/<take wav name>.mid, overwritten each time. A non-existent File if the
+// take has no notes or the file could not be written.
+juce::File TakeView::writeMidiFile() const
+{
+    const auto& t = processor.getTake();
+    if (t.notes.empty())
+        return {};
+    const auto name = t.audioPath.isEmpty() ? juce::String("take")
+                                            : juce::File(t.audioPath).getFileNameWithoutExtension();
+    const auto file = processor.getTakesFolder().getChildFile("MIDI").getChildFile(name + ".mid");
+    if (! file.getParentDirectory().createDirectory())
+        return {};
+    file.deleteFile();
+    juce::FileOutputStream out(file);
+    if (! out.openedOk())
+        return {};
+    take::toMidiFile(t).writeTo(out);
+    return file;
 }
 
 void TakeView::onRecordClicked()
@@ -597,6 +685,7 @@ void TakeView::refreshControls()
     recordButton.setEnabled(recording || ! analysing);
     undoButton.setEnabled(! recording && processor.canUndoTake());
     snapButton.setEnabled(! recording && ! t.notes.empty());
+    dragTile.setEnabled(! recording && ! analysing && ! t.notes.empty());
     clearButton.setEnabled(! recording && ! analysing && ! t.isEmpty());
 
     juce::String s;
@@ -669,8 +758,8 @@ void TakeView::resized()
     snapButton.setBounds(row.removeFromLeft(130));
     row.removeFromLeft(8);
     clearButton.setBounds(row.removeFromLeft(170));
-    row.removeFromLeft(12);
-    status.setBounds(row);
+    row.removeFromLeft(8);
+    dragTile.setBounds(row.removeFromLeft(110));
 
     area.removeFromTop(8);
     row = area.removeFromTop(hitH);
@@ -682,6 +771,8 @@ void TakeView::resized()
         row.removeFromLeft(8);
     }
     fitButton.setBounds(row.removeFromLeft(70));
+    row.removeFromLeft(16);
+    status.setBounds(row); // the transport row is full; this one has room for "Analysing..."
 
     area.removeFromTop(8);
     hint.setBounds(area.removeFromBottom(24));

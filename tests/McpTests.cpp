@@ -14,6 +14,7 @@
 #include "../src/PluginProcessor.h"
 #include "../src/mcp/MurmurMcp.h"
 #include <juce_core/juce_core.h>
+#include <cmath>
 #include <juce_events/juce_events.h>
 
 namespace murmur::tests
@@ -21,10 +22,65 @@ namespace murmur::tests
 namespace
 {
     // A processor plus the message loop JUCE expects around one (the MCP bridge wants it too).
+    constexpr double kRate = 44100.0;
+    constexpr int kBlock = 512;
+
     struct Host
     {
         juce::ScopedJuceInitialiser_GUI juceInit;
         MurmurProcessor processor;
+        juce::File folder;
+
+        // Prepared like a host would, with takes going to a folder of its own.
+        Host()
+        {
+            folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getNonexistentChildFile("murmur-mcp-test", "");
+            processor.setTakesFolder(folder);
+            processor.setRateAndBufferSizeDetails(kRate, kBlock);
+            processor.prepareToPlay(kRate, kBlock);
+        }
+        ~Host() { folder.deleteRecursively(); }
+
+        // Feeds a 440 Hz tone (A4) through processBlock for `seconds`.
+        void feedTone(double seconds)
+        {
+            juce::AudioBuffer<float> buf(2, kBlock);
+            juce::MidiBuffer midi;
+            const int total = (int) (seconds * kRate);
+            for (int pos = 0; pos < total; pos += kBlock)
+            {
+                const int n = std::min(kBlock, total - pos);
+                buf.setSize(2, n, false, false, true);
+                for (int i = 0; i < n; ++i)
+                {
+                    const double ph = 6.283185307 * 440.0 * (double) (pos + i) / kRate;
+                    const float s = 0.4f * (float) (std::sin(ph) + 0.5 * std::sin(2 * ph));
+                    buf.setSample(0, i, s);
+                    buf.setSample(1, i, s);
+                }
+                processor.processBlock(buf, midi);
+            }
+        }
+
+        // A known free take without recording: notes 60, 64, 67, half a second each.
+        void installTake()
+        {
+            processor.editTake([](take::Take& t)
+                               {
+                                   t.notes.clear();
+                                   for (int i = 0; i < 3; ++i)
+                                   {
+                                       take::TakeNote n;
+                                       n.start = 0.5 * i;
+                                       n.end = 0.5 * i + 0.5;
+                                       n.sungMidi = (float) (60 + 4 * i) + 0.2f;
+                                       n.detectedNote = n.targetNote = i == 0 ? 60 : i == 1 ? 64 : 67;
+                                       n.velocity = 0.5f;
+                                       t.notes.push_back(n);
+                                   }
+                               });
+        }
     };
 
     // One JSON-RPC round trip. `error` comes back empty on success and carries the tool's own
@@ -122,7 +178,7 @@ public:
                 expect(false, "tools/list returned no array");
                 return;
             }
-            expect(tools->size() >= 7, "the table lost tools");
+            expect(tools->size() >= 10, "the table lost tools");
             juce::StringArray names;
             for (auto& t : *tools)
             {
@@ -146,7 +202,8 @@ public:
             // Named explicitly: docs/MCP.md documents these, and a rename would leave every
             // script written against the docs failing with "unknown tool".
             for (const char* n : { "get_state", "get_transport", "list_params", "set_params",
-                                   "get_calibration", "start_calibration", "clear_calibration" })
+                                   "get_calibration", "start_calibration", "clear_calibration",
+                                   "get_take", "edit_take", "take_transport" })
                 expect(names.contains(n), juce::String("missing tool: ") + n);
         }
 
@@ -264,6 +321,219 @@ public:
                 expect(err.isNotEmpty(), "clear_calibration accepted a bad drumClass");
             }
             expect(! h.processor.getEngine().isCalibrating(), "a rejected call still armed calibration");
+        }
+
+        beginTest("get_take on an empty processor reports no take");
+        {
+            Host h;
+            juce::String err;
+            const auto r = call(h.processor, "get_take", args({}), err);
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expect(! (bool) r["hasTake"], "no take yet");
+            expect(! (bool) r["recording"] && ! (bool) r["analysing"] && ! (bool) r["playing"]);
+            expect(r["error"].isVoid(), "no error text");
+            expect(r["anchor"].isVoid(), "no anchor");
+            expectEquals((int) r["notes"].getArray()->size(), 0);
+        }
+
+        beginTest("get_take lists the notes with indexes, targets and names");
+        {
+            Host h;
+            h.installTake();
+            h.processor.editTake([](take::Take& t)
+                                 {
+                                     t.notes[1].targetNote = 65;
+                                     t.anchorPpq = 8.0;
+                                     t.anchorBpm = 90.0;
+                                 });
+            const auto r = call(h.processor, "get_take", args({}));
+            expect((bool) r["hasTake"]);
+            expectEquals((int) r["noteCount"], 3);
+            expectEquals((double) r["anchor"]["ppq"], 8.0);
+            expectEquals((double) r["anchor"]["bpm"], 90.0);
+            auto* notes = r["notes"].getArray();
+            expect(notes != nullptr && notes->size() == 3, "three notes");
+            if (notes != nullptr && notes->size() == 3)
+            {
+                const auto& n = (*notes)[1];
+                expectEquals((int) n["index"], 1);
+                expectEquals((int) n["detectedNote"], 64);
+                expectEquals((int) n["targetNote"], 65);
+                expectEquals(n["targetName"].toString(), juce::String("F3"));
+                expectWithinAbsoluteError((double) n["start"], 0.5, 1e-9);
+                expectWithinAbsoluteError((double) n["end"], 1.0, 1e-9);
+                expectWithinAbsoluteError((double) n["sungMidi"], 64.2, 1e-4);
+                expectWithinAbsoluteError((double) n["velocity"], 0.5, 1e-6);
+                expect(n["sungName"].toString().isNotEmpty() && n["detectedName"].toString().isNotEmpty());
+            }
+        }
+
+        beginTest("edit_take shift moves by semitones, or by scale degrees with scaleLock on");
+        {
+            Host h;
+            h.installTake();
+            juce::String err;
+            call(h.processor, "set_params", args({ { "values", args({ { "scaleLock", false } }) } }), err);
+            auto r = call(h.processor, "edit_take", args({ { "op", "shift" }, { "index", 0 }, { "steps", 3 } }), err);
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expectEquals((int) r["targetNote"], 63);
+            expectEquals((int) h.processor.getTake().notes[0].targetNote, 63);
+
+            // Locked: the target steps to the next scale note, whatever the scale.
+            call(h.processor, "set_params", args({ { "values", args({ { "scaleLock", true } }) } }), err);
+            const int root = (int) h.processor.apvts.getRawParameterValue("root")->load();
+            const int scale = (int) h.processor.apvts.getRawParameterValue("scale")->load();
+            r = call(h.processor, "edit_take", args({ { "op", "shift" }, { "index", 1 }, { "steps", 1 } }), err);
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expectEquals((int) r["targetNote"], take::detail::nextInScale(64, 1, root, scale));
+            expect(okstudio::scales::isInScale((int) r["targetNote"], root, scale), "landed in the scale");
+        }
+
+        beginTest("edit_take set, reset, delete, snap_to_scale and undo");
+        {
+            Host h;
+            h.installTake();
+            juce::String err;
+            auto r = call(h.processor, "edit_take", args({ { "op", "set" }, { "index", 2 }, { "note", 70 } }), err);
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expectEquals((int) r["targetNote"], 70);
+            expectEquals(r["targetName"].toString(), juce::String("A#3"));
+
+            r = call(h.processor, "edit_take", args({ { "op", "reset" }, { "index", 2 } }), err);
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expectEquals((int) r["targetNote"], 67);
+            expectEquals((int) h.processor.getTake().notes[2].targetNote, 67);
+
+            call(h.processor, "edit_take", args({ { "op", "set" }, { "index", 0 }, { "note", 61 } }), err);
+            r = call(h.processor, "edit_take", args({ { "op", "snap_to_scale" } }), err);
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expectEquals((int) r["noteCount"], 3);
+            const int root = (int) h.processor.apvts.getRawParameterValue("root")->load();
+            const int scale = (int) h.processor.apvts.getRawParameterValue("scale")->load();
+            expect(okstudio::scales::isInScale(h.processor.getTake().notes[0].targetNote, root, scale),
+                   "note 0 is in the scale after snapping");
+
+            r = call(h.processor, "edit_take", args({ { "op", "delete" }, { "index", 1 } }), err);
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expectEquals((int) r["noteCount"], 2);
+            expectEquals((int) h.processor.getTake().notes.size(), 2);
+
+            r = call(h.processor, "edit_take", args({ { "op", "undo" } }), err); // brings the deleted note back
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expectEquals((int) r["noteCount"], 3);
+            expectEquals((int) h.processor.getTake().notes[1].targetNote, 64);
+        }
+
+        beginTest("edit_take rejects bad arguments and changes nothing");
+        {
+            Host h;
+            h.installTake();
+            const auto before = take::toValueTree(h.processor.getTake()).toXmlString();
+            const int version = h.processor.getTakeVersion();
+            juce::String err;
+
+            const std::initializer_list<juce::var> bad = {
+                args({}),                                                   // no op
+                args({ { "op", "explode" } }),                              // unknown op
+                args({ { "op", 5 } }),                                      // op not a string
+                args({ { "op", "shift" }, { "steps", 1 } }),                // no index
+                args({ { "op", "shift" }, { "index", 3 }, { "steps", 1 } }), // index past the end
+                args({ { "op", "shift" }, { "index", -1 }, { "steps", 1 } }),
+                args({ { "op", "shift" }, { "index", 1.5 }, { "steps", 1 } }), // fractional index
+                args({ { "op", "shift" }, { "index", "1" }, { "steps", 1 } }), // index as text
+                args({ { "op", "shift" }, { "index", 0 } }),                // no steps
+                args({ { "op", "shift" }, { "index", 0 }, { "steps", "up" } }),
+                args({ { "op", "set" }, { "index", 0 } }),                  // no note
+                args({ { "op", "set" }, { "index", 0 }, { "note", 128 } }), // note out of range
+                args({ { "op", "set" }, { "index", 0 }, { "note", -1 } }),
+                args({ { "op", "set" }, { "note", 60 } }),                  // no index
+                args({ { "op", "reset" } }),
+                args({ { "op", "reset" }, { "index", 9 } }),
+                args({ { "op", "delete" } }),
+                args({ { "op", "delete" }, { "index", 3 } }),
+            };
+            int i = 0;
+            for (const auto& a : bad)
+            {
+                ++i;
+                call(h.processor, "edit_take", a, err);
+                expect(err.isNotEmpty(), "edit_take accepted bad arguments #" + juce::String(i));
+            }
+            expectEquals(take::toValueTree(h.processor.getTake()).toXmlString(), before);
+            expectEquals(h.processor.getTakeVersion(), version);
+
+            Host fresh;
+            call(fresh.processor, "edit_take", args({ { "op", "undo" } }), err);
+            expect(err.isNotEmpty(), "undo with an empty history should fail");
+            call(fresh.processor, "edit_take", args({ { "op", "shift" }, { "index", 0 }, { "steps", 1 } }), err);
+            expect(err.isNotEmpty(), "shift on an empty take should fail");
+        }
+
+        beginTest("take_transport play and stop, with errors");
+        {
+            Host h;
+            juce::String err;
+            call(h.processor, "take_transport", args({ { "action", "play" } }), err);
+            expect(err.isNotEmpty(), "play with no notes should fail");
+            call(h.processor, "take_transport", args({ { "action", "stop" } }), err);
+            expect(err.isNotEmpty(), "stop when not playing should fail");
+            call(h.processor, "take_transport", args({ { "action", "stop_recording" } }), err);
+            expect(err.isNotEmpty(), "stop_recording when not recording should fail");
+            call(h.processor, "take_transport", args({ { "action", "rewind" } }), err);
+            expect(err.isNotEmpty(), "unknown action should fail");
+            call(h.processor, "take_transport", args({}), err);
+            expect(err.isNotEmpty(), "missing action should fail");
+
+            h.installTake(); // 1.5 s long
+            for (const auto& bad : { juce::var(-1.0), juce::var(1.5), juce::var(99), juce::var("soon") })
+            {
+                call(h.processor, "take_transport", args({ { "action", "play" }, { "fromSeconds", bad } }), err);
+                expect(err.isNotEmpty(), "play accepted a bad fromSeconds");
+                expect(! h.processor.isTakePlaying(), "a rejected play still started");
+            }
+
+            auto r = call(h.processor, "take_transport", args({ { "action", "play" }, { "fromSeconds", 0.5 } }), err);
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expect(h.processor.isTakePlaying(), "playing");
+            expect((bool) r["playing"]);
+            expectEquals((int) r["noteCount"], 3);
+            call(h.processor, "take_transport", args({ { "action", "play" } }), err);
+            expect(err.isNotEmpty(), "play while playing should fail");
+            expect((bool) call(h.processor, "get_take", args({}))["playing"], "get_take sees it playing");
+
+            r = call(h.processor, "take_transport", args({ { "action", "stop" } }), err);
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expect(! h.processor.isTakePlaying(), "stopped");
+            expect(! (bool) r["playing"]);
+        }
+
+        beginTest("take_transport record and stop_recording make a take from the input");
+        {
+            Host h;
+            juce::String err;
+            auto r = call(h.processor, "take_transport", args({ { "action", "record" } }), err);
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expect((bool) r["recording"], "recording");
+            call(h.processor, "take_transport", args({ { "action", "record" } }), err);
+            expect(err.isNotEmpty(), "record while recording should fail");
+
+            h.feedTone(1.0);
+            r = call(h.processor, "get_take", args({}));
+            expect((bool) r["recording"] && (double) r["secondsRecorded"] > 0.9, "get_take sees the recording");
+            call(h.processor, "edit_take", args({ { "op", "snap_to_scale" } }), err);
+            expect(err.isNotEmpty(), "editing while recording should fail");
+            call(h.processor, "take_transport", args({ { "action", "play" } }), err);
+            expect(err.isNotEmpty(), "play while recording should fail");
+
+            r = call(h.processor, "take_transport", args({ { "action", "stop_recording" } }), err);
+            expect(err.isEmpty(), "unexpected error: " + err);
+            expect(! (bool) r["recording"] && ! (bool) r["analysing"], "analysis finished");
+            expectEquals((int) r["noteCount"], 1);
+            r = call(h.processor, "get_take", args({}));
+            expect((bool) r["hasTake"]);
+            expectEquals((int) r["notes"][0]["targetNote"], 69); // 440 Hz
+            expectEquals(r["notes"][0]["targetName"].toString(), juce::String("A3"));
+            h.processor.clearTake();
         }
     }
 };
