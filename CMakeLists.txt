@@ -32,6 +32,8 @@ function(murmur_configure_target tgt)
     target_sources(${tgt} PRIVATE
         src/PluginProcessor.cpp
         src/PluginEditor.cpp
+        src/StandaloneSupport.cpp
+        src/ui/TakeView.cpp
         src/mcp/MurmurMcp.cpp)
 
     target_compile_definitions(${tgt} PUBLIC
@@ -106,7 +108,7 @@ endif()
 # host classes HostTests.cpp exercises; the only MURMUR_HOST-gated code is createPluginFilter,
 # which no test calls), otherwise plain Murmur and HostTests.cpp is left out.
 enable_testing()
-set(_murmurTestSources tests/DspTests.cpp tests/StateTests.cpp tests/McpTests.cpp)
+set(_murmurTestSources tests/DspTests.cpp tests/StateTests.cpp tests/McpTests.cpp tests/TakeTests.cpp tests/TakeCaptureTests.cpp tests/TakePlaybackTests.cpp)
 if (MURMUR_BUILD_HOST)
     set(_murmurTestTarget MurmurHost)
     list(APPEND _murmurTestSources tests/HostTests.cpp)

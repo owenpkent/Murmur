@@ -9,6 +9,7 @@
 #include <juce_core/juce_core.h>
 
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 // Pure-DSP tests for the Murmur engine. No plugin, editor or audio device: synthetic
@@ -469,6 +470,10 @@ int main()
     int failures = 0;
     for (int i = 0; i < runner.getNumResults(); ++i)
         if (const auto* r = runner.getResult(i))
+        {
             failures += r->failures;
+            std::printf("%-40s %-50s %3d passed, %d failed\n", r->unitTestName.toRawUTF8(),
+                        r->subcategoryName.toRawUTF8(), r->passes, r->failures);
+        }
     return failures == 0 ? 0 : 1;
 }

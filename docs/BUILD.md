@@ -16,7 +16,8 @@ Override paths with `-DMURMUR_JUCE_PATH=<dir>` and `-DOKSTUDIO_KIT_PATH=<dir>`.
 running Standalone (politely, so JUCE saves the chosen audio device), builds exactly one
 Standalone target (Murmur Host by default, `--murmur` for plain Murmur), and relaunches it. The Standalone opens on the machine's audio input, so
 singing into the mic shows the level bar, the last note or hit and the free tempo with no DAW
-involved and no rescan.
+involved and no rescan. The Standalone unmutes its own input (JUCE mutes it by default) and
+plays no voice out, only a hosted instrument, so laptop speakers cannot feed back.
 
 Owen runs it by double-clicking `run.py` in Explorer: no arguments, no terminal, and the
 console holds open on failure so he can read the error. `run.ps1` is a thin shim over it, so

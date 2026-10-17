@@ -71,7 +71,12 @@ void MurmurHostProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
 
     if (canHost) // keep the voice: Murmur only reads it, but the crossfade needs it afterwards
         for (int ch = 0; ch < numCh; ++ch)
-            dryBlock.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+        {
+            if (wrapperType == wrapperType_Standalone)
+                dryBlock.clear(ch, 0, numSamples); // no voice out in the Standalone: StandaloneSupport.h
+            else
+                dryBlock.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+        }
 
     // Murmur: voice in, engine MIDI out, audio untouched.
     MurmurProcessor::processBlock(buffer, midi);
@@ -247,7 +252,7 @@ void MurmurHostProcessor::getStateInformation(juce::MemoryBlock& destData)
         hosted.setProperty("file", missingFile, nullptr);
         hosted.setProperty("state", missingState, nullptr);
     }
-    okstudio::state::save(apvts, "MURMUR", destData, { calibrationToTree(), hosted });
+    okstudio::state::save(apvts, "MURMUR", destData, { calibrationToTree(), takeToTree(), hosted });
 }
 
 void MurmurHostProcessor::setStateInformation(const void* data, int sizeInBytes)
@@ -255,6 +260,7 @@ void MurmurHostProcessor::setStateInformation(const void* data, int sizeInBytes)
     okstudio::state::load(apvts, data, sizeInBytes, [this](const juce::ValueTree& root)
     {
         restoreCalibration(root);
+        restoreTake(root);
 
         const auto hosted = root.getChildWithName("hostedInstrument");
         if (! hosted.isValid() || hosted.getProperty("file").toString().isEmpty())

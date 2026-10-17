@@ -40,6 +40,37 @@ open).
 Output notes are fixed General MIDI Drum Rack notes: kick 36, snare 38, closed hat 42, open
 hat 46.
 
+## Edit view (Take Editor)
+
+The **Live | Edit** toggle in the header is view state only (no parameter, not saved). Live is
+everything above. Edit hides those controls and shows the Take Editor: record a take, see each
+note as a blob on a pitch-by-time roll with your sung pitch curve through it, and fix wrong
+notes by dragging. Melody mode only: in Drums mode the view says so instead of showing the roll.
+Design: [TAKE_EDITOR_DESIGN.md](TAKE_EDITOR_DESIGN.md).
+
+| Control | Gesture | Result |
+|---------|---------|--------|
+| **Live / Edit** toggle | Click a segment | Switches between the live controls and the Take Editor. |
+| **Record** / **Stop 0:12** | Click | Starts capturing the input; the button becomes Stop with the elapsed time. Capture also stops at 3 minutes. When it stops, Murmur analyses the take ("Analysing...") and then shows its notes. |
+| **Play** / **Stop** | Click | Plays the take's notes as MIDI (through the instrument in Murmur Host, out of the track in plain Murmur), from the start marker (default 0), and stops itself at the end. The take replaces the live MIDI while it plays; the level bar keeps moving but singing along adds no notes. Disabled with no notes, while recording or analysing. An anchored take also plays by itself, in place, when the host plays through it. Recording stops playback. |
+| Time ruler | Click | Sets where Play starts: a small flag and a thin line mark it. |
+| Playhead | Display only | A vertical line on the roll while playing; the view pages forward when it reaches the right edge. |
+| **Undo** | Click | Undoes the last edit (a drag, Reset, Erase or Snap to scale is one step). Disabled when there is nothing to undo. |
+| **Snap to scale** | Click | Moves every note to the nearest note of the Root and Scale chosen in Live view. |
+| **Clear** | Click, then click again within 3 seconds | The first click turns the button into "Click again to clear"; the second removes the take. |
+| Status label | Display only | "Analysing...", an error if saving or analysis failed, otherwise "N notes". |
+| **Move / Reset / Erase** | Click a segment | The verb for a click on a note blob. |
+| Note blob, Move mode | Drag up or down | Previews the note in the lane under the pointer (snapping to scale notes while Scale Lock is on, with a faint ghost left in the original lane); release to place it. Hold the drag at the top or bottom edge of the roll and it scrolls, so a note can travel an octave in one drag. One undo step. A note moved off what was heard gets an orange outline. |
+| Note blob, Reset mode | Click | Puts the note back to the pitch that was heard. |
+| Note blob, Erase mode | Click | Deletes the note. |
+| **-** / **+** / **Fit** | Click | Zoom the time axis out or in; Fit frames the whole take. A new take is fitted automatically. |
+| Roll | Scroll over the roll | Scrolls through time. The wheel never zooms. |
+| Keyboard (left edge of the roll) | Scroll over it | Scrolls through pitch. |
+| Hint strip | Display only | One line: what the pointer is over and what a click or drag does in the current mode. |
+
+Lanes are one semitone and `minHitPx` tall; with Scale Lock on, lanes outside the scale are
+shaded darker. The time ruler is labelled in seconds.
+
 ## Driving it without the mouse
 
 The same controls are reachable from Claude Code through the embedded MCP server. That is an
